@@ -1,0 +1,63 @@
+{
+  "evaluation_date": "2026-10-05",
+  "training_window": "2009-12-01 to 2011-11-09 (709 days)",
+  "holdout_window": "2011-11-10 to 2011-12-09 (30 days)",
+  "product_count": 50,
+  "best_model": "Moving Average 28D",
+  "best_mae": 58.5368,
+  "best_rmse": 90.3149,
+  "best_mape": 317.39,
+  "best_smape": 102.05,
+  "ranking": [
+    {
+      "Model": "Moving Average 28D",
+      "Product Count": 50,
+      "MAE": 58.5368,
+      "RMSE": 90.3149,
+      "MAPE": 317.39,
+      "sMAPE": 102.05
+    },
+    {
+      "Model": "Moving Average 14D",
+      "Product Count": 50,
+      "MAE": 67.1166,
+      "RMSE": 95.9948,
+      "MAPE": 391.07,
+      "sMAPE": 104.88
+    },
+    {
+      "Model": "Prophet",
+      "Product Count": 50,
+      "MAE": 68.5849,
+      "RMSE": 99.062,
+      "MAPE": 669.52,
+      "sMAPE": 101.28
+    },
+    {
+      "Model": "Moving Average 7D",
+      "Product Count": 50,
+      "MAE": 71.2854,
+      "RMSE": 97.384,
+      "MAPE": 489.96,
+      "sMAPE": 107.78
+    },
+    {
+      "Model": "LightGBM",
+      "Product Count": 50,
+      "MAE": 83.0076,
+      "RMSE": 113.7579,
+      "MAPE": 782.39,
+      "sMAPE": 111.42
+    },
+    {
+      "Model": "Naive (Last Value)",
+      "Product Count": 50,
+      "MAE": 119.3353,
+      "RMSE": 146.649,
+      "MAPE": 516.19,
+      "sMAPE": 127.81
+    }
+  ],
+  "percentage_improvement_over_naive": 50.95,
+  "percentage_improvement_over_ma28": 0.0
+}
