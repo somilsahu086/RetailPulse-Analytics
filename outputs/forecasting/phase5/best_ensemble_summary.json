@@ -1,0 +1,55 @@
+{
+  "evaluation_date": "2026-10-06",
+  "phase": "Phase 5 - Prophet + PyTorch LSTM Hybrid Ensemble",
+  "training_window": "2009-12-01 to 2011-11-09 (709 days)",
+  "holdout_window": "2011-11-10 to 2011-12-09 (30 days)",
+  "product_count": 50,
+  "lstm_configuration": {
+    "framework": "PyTorch",
+    "architecture": "DemandLSTM (LSTM hidden_dim=32, num_layers=1, fc_linear=1)",
+    "lookback_window": 30,
+    "epochs": 20,
+    "learning_rate": 0.01,
+    "optimizer": "Adam",
+    "loss_function": "MSELoss",
+    "scaling": "MinMaxDemandScaler (strictly fitted on training history)"
+  },
+  "prophet_configuration": {
+    "growth": "linear",
+    "weekly_seasonality": true,
+    "yearly_seasonality": true,
+    "daily_seasonality": false,
+    "country_holidays": "UK",
+    "confidence_interval": 0.8
+  },
+  "ensemble_weighting_method": "Grid search over candidate weights w in [0.0, 1.0] minimizing MAE on internal validation window (last 30 days of training history: 2011-10-11 to 2011-11-09)",
+  "average_prophet_weight": 0.52,
+  "best_model": "LSTM",
+  "metrics_summary": [
+    {
+      "Model": "LSTM",
+      "Product Count": 50,
+      "MAE": 62.2061,
+      "RMSE": 94.2214,
+      "MAPE": 341.87,
+      "sMAPE": 112.04
+    },
+    {
+      "Model": "Ensemble",
+      "Product Count": 50,
+      "MAE": 64.1671,
+      "RMSE": 97.5814,
+      "MAPE": 552.29,
+      "sMAPE": 106.46
+    },
+    {
+      "Model": "Prophet",
+      "Product Count": 50,
+      "MAE": 68.5849,
+      "RMSE": 99.062,
+      "MAPE": 669.52,
+      "sMAPE": 101.28
+    }
+  ],
+  "leakage_safeguard": "Holdout test set (2011-11-10 to 2011-12-09) strictly untouched during model training and weight tuning."
+}

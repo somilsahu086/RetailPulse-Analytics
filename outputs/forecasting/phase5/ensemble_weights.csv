@@ -1,0 +1,4 @@
+Model,Weight,Weight_Pct
+Moving Average 28D,0.3901,39.01%
+Prophet,0.3276,32.76%
+LightGBM,0.2822,28.22%
