@@ -1,0 +1,19 @@
+# RetailPulse Analytics — Platform Dependencies
+
+# Core Data Manipulation & Storage
+pandas>=2.0.0
+numpy>=1.24.0
+openpyxl>=3.1.0
+pyarrow>=12.0.0
+
+# Visualization
+matplotlib>=3.7.0
+
+# Machine Learning & Time-Series Modeling
+scikit-learn>=1.3.0
+prophet>=1.1.0
+torch>=2.0.0
+lightgbm>=4.0.0
+
+# Testing & Quality
+pytest>=7.0.0

@@ -1,0 +1,88 @@
+{
+  "evaluation_date": "2026-10-06",
+  "training_window": "2009-12-01 to 2011-10-10",
+  "validation_window": "2011-10-11 to 2011-11-09 (Weight Optimization)",
+  "holdout_window": "2011-11-10 to 2011-12-09 (Final 30-Day Evaluation)",
+  "product_count": 50,
+  "ensemble_weights": {
+    "Prophet": 0.32764092991787463,
+    "LightGBM": 0.2822113617222858,
+    "Moving Average 28D": 0.3901477083598396
+  },
+  "best_model": "Moving Average 28D",
+  "best_mae": 58.5368,
+  "best_rmse": 90.3149,
+  "best_mape": 317.39,
+  "best_smape": 102.05,
+  "model_ranking": [
+    {
+      "Model": "Moving Average 28D",
+      "Product Count": 50,
+      "MAE": 58.5368,
+      "RMSE": 90.3149,
+      "MAPE": 317.39,
+      "sMAPE": 102.05
+    },
+    {
+      "Model": "Ensemble",
+      "Product Count": 50,
+      "MAE": 64.5332,
+      "RMSE": 91.4046,
+      "MAPE": 554.55,
+      "sMAPE": 106.44
+    },
+    {
+      "Model": "Moving Average 14D",
+      "Product Count": 50,
+      "MAE": 67.1166,
+      "RMSE": 95.9948,
+      "MAPE": 391.07,
+      "sMAPE": 104.88
+    },
+    {
+      "Model": "Prophet",
+      "Product Count": 50,
+      "MAE": 68.5849,
+      "RMSE": 99.062,
+      "MAPE": 669.52,
+      "sMAPE": 101.28
+    },
+    {
+      "Model": "Moving Average 7D",
+      "Product Count": 50,
+      "MAE": 71.2854,
+      "RMSE": 97.384,
+      "MAPE": 489.96,
+      "sMAPE": 107.78
+    },
+    {
+      "Model": "LightGBM",
+      "Product Count": 50,
+      "MAE": 83.0076,
+      "RMSE": 113.7579,
+      "MAPE": 782.39,
+      "sMAPE": 111.42
+    },
+    {
+      "Model": "Naive (Last Value)",
+      "Product Count": 50,
+      "MAE": 119.3353,
+      "RMSE": 146.649,
+      "MAPE": 516.19,
+      "sMAPE": 127.81
+    }
+  ],
+  "inventory_parameters": {
+    "lead_time_days": 7,
+    "service_level": 0.95,
+    "z_score": 1.645,
+    "review_period_days": 14
+  },
+  "stockout_risk_counts": {
+    "HIGH": 24,
+    "MEDIUM": 14,
+    "LOW": 12
+  },
+  "total_catalog_safety_stock_units": 5565,
+  "total_catalog_reorder_point_units": 34918
+}
