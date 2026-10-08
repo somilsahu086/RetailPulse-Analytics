@@ -7,6 +7,7 @@ Provides robust, zero-safe implementations of:
 - RMSE (Root Mean Squared Error)
 - MAPE (Mean Absolute Percentage Error)
 - sMAPE (Symmetric Mean Absolute Percentage Error)
+- WMAPE (Volume-Weighted Mean Absolute Percentage Error)
 
 Zero Actual Demand Handling:
 In retail time series, zero-demand days are common (store closed, intermittent purchases).
@@ -15,6 +16,8 @@ In retail time series, zero-demand days are common (store closed, intermittent p
   or applies an epsilon offset.
 - sMAPE (Symmetric MAPE) bounds percentage errors between 0% and 200% by dividing
   by (|y_true| + |y_pred| + eps), gracefully handling zeros in y_true without infinite values.
+- WMAPE (Weighted MAPE) computes total absolute errors divided by total actual demand,
+  providing a business-grounded metric that does not explode on low-volume retail days.
 """
 
 from typing import Dict, Union
@@ -112,6 +115,33 @@ def symmetric_mean_absolute_percentage_error(
     return float(smape_val)
 
 
+def weighted_mean_absolute_percentage_error(
+    y_true: Union[np.ndarray, pd.Series, list],
+    y_pred: Union[np.ndarray, pd.Series, list],
+    epsilon: float = 1e-8
+) -> float:
+    """
+    Compute Volume-Weighted Mean Absolute Percentage Error (WMAPE):
+        WMAPE = ( sum(|y_true - y_pred|) / (sum(|y_true|) + eps) ) * 100%
+
+    Unlike unweighted MAPE, WMAPE weights errors by transaction volume,
+    preventing artificial error explosions on low-volume/intermittent demand days.
+    """
+    y_t = np.asarray(y_true, dtype=float)
+    y_p = np.asarray(y_pred, dtype=float)
+
+    if len(y_t) == 0:
+        return 0.0
+
+    total_actual = float(np.sum(np.abs(y_t)))
+    total_abs_error = float(np.sum(np.abs(y_t - y_p)))
+
+    if total_actual == 0.0:
+        return 0.0 if total_abs_error == 0.0 else 100.0
+
+    return float((total_abs_error / (total_actual + epsilon)) * 100.0)
+
+
 def evaluate_forecast(
     y_true: Union[np.ndarray, pd.Series, list],
     y_pred: Union[np.ndarray, pd.Series, list]
@@ -122,11 +152,12 @@ def evaluate_forecast(
     Returns
     -------
     dict
-        {'MAE': float, 'RMSE': float, 'MAPE': float, 'sMAPE': float}
+        {'MAE': float, 'RMSE': float, 'MAPE': float, 'sMAPE': float, 'WMAPE': float}
     """
     return {
         "MAE": round(mean_absolute_error(y_true, y_pred), 4),
         "RMSE": round(root_mean_squared_error(y_true, y_pred), 4),
         "MAPE": round(mean_absolute_percentage_error(y_true, y_pred), 4),
-        "sMAPE": round(symmetric_mean_absolute_percentage_error(y_true, y_pred), 4)
+        "sMAPE": round(symmetric_mean_absolute_percentage_error(y_true, y_pred), 4),
+        "WMAPE": round(weighted_mean_absolute_percentage_error(y_true, y_pred), 4)
     }
