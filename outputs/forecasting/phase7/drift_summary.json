@@ -1,0 +1,23 @@
+{
+  "dataset_drift_detected": true,
+  "share_of_drifted_features": 1.0,
+  "number_of_drifted_features": 12,
+  "number_of_features": 12,
+  "drift_threshold": 0.05,
+  "drift_share_threshold": 0.5,
+  "html_report_path": "D:\\RetailPulse-Analytics\\outputs\\forecasting\\phase7\\phase7_drift_report.html",
+  "features_monitored": [
+    "Demand",
+    "lag_1",
+    "lag_7",
+    "lag_14",
+    "lag_21",
+    "lag_28",
+    "rolling_mean_7",
+    "rolling_std_7",
+    "rolling_mean_14",
+    "rolling_std_14",
+    "rolling_mean_28",
+    "rolling_std_28"
+  ]
+}
