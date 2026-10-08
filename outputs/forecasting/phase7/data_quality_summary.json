@@ -1,0 +1,100 @@
+{
+  "reference_row_count": 14150,
+  "current_row_count": 3000,
+  "missing_values": {
+    "reference_missing_count": 0,
+    "current_missing_count": 0,
+    "reference_missing_share": 0.0,
+    "current_missing_share": 0.0
+  },
+  "non_finite_values": {
+    "reference_inf_count": 0,
+    "current_inf_count": 0
+  },
+  "feature_statistics": {
+    "Demand": {
+      "reference_mean": 48.3293,
+      "current_mean": 64.9727,
+      "reference_std": 128.8512,
+      "current_std": 170.5613,
+      "mean_shift_percent": 34.44
+    },
+    "lag_1": {
+      "reference_mean": 48.1348,
+      "current_mean": 65.5097,
+      "reference_std": 128.798,
+      "current_std": 170.704,
+      "mean_shift_percent": 36.1
+    },
+    "lag_7": {
+      "reference_mean": 46.6094,
+      "current_mean": 66.4033,
+      "reference_std": 126.3648,
+      "current_std": 168.637,
+      "mean_shift_percent": 42.47
+    },
+    "lag_14": {
+      "reference_mean": 46.1598,
+      "current_mean": 64.282,
+      "reference_std": 126.6,
+      "current_std": 166.2811,
+      "mean_shift_percent": 39.26
+    },
+    "lag_21": {
+      "reference_mean": 46.0452,
+      "current_mean": 62.8883,
+      "reference_std": 126.6665,
+      "current_std": 164.3252,
+      "mean_shift_percent": 36.58
+    },
+    "lag_28": {
+      "reference_mean": 45.9579,
+      "current_mean": 61.5353,
+      "reference_std": 126.1037,
+      "current_std": 162.7413,
+      "mean_shift_percent": 33.9
+    },
+    "rolling_mean_7": {
+      "reference_mean": 47.584,
+      "current_mean": 64.0954,
+      "reference_std": 53.6461,
+      "current_std": 80.7651,
+      "mean_shift_percent": 34.7
+    },
+    "rolling_std_7": {
+      "reference_mean": 68.8812,
+      "current_mean": 79.7975,
+      "reference_std": 105.0028,
+      "current_std": 133.0577,
+      "mean_shift_percent": 15.85
+    },
+    "rolling_mean_14": {
+      "reference_mean": 46.9905,
+      "current_mean": 63.8549,
+      "reference_std": 43.1367,
+      "current_std": 70.355,
+      "mean_shift_percent": 35.89
+    },
+    "rolling_std_14": {
+      "reference_mean": 77.4243,
+      "current_mean": 89.904,
+      "reference_std": 97.1089,
+      "current_std": 126.6832,
+      "mean_shift_percent": 16.12
+    },
+    "rolling_mean_28": {
+      "reference_mean": 46.6724,
+      "current_mean": 62.7274,
+      "reference_std": 36.2161,
+      "current_std": 61.9353,
+      "mean_shift_percent": 34.4
+    },
+    "rolling_std_28": {
+      "reference_mean": 85.927,
+      "current_mean": 99.3414,
+      "reference_std": 89.4301,
+      "current_std": 119.2297,
+      "mean_shift_percent": 15.61
+    }
+  }
+}

@@ -1,0 +1,13 @@
+feature,drift_detected,drift_score,stattest_name,threshold
+rolling_std_7,True,0.10432109905351783,Wasserstein distance (normed),0.05
+lag_28,True,0.12385003286540322,Wasserstein distance (normed),0.05
+rolling_std_14,True,0.1286900473713398,Wasserstein distance (normed),0.05
+Demand,True,0.12917616150460076,Wasserstein distance (normed),0.05
+lag_21,True,0.13329207990429462,Wasserstein distance (normed),0.05
+lag_1,True,0.1349085775079824,Wasserstein distance (normed),0.05
+lag_14,True,0.14346600477676902,Wasserstein distance (normed),0.05
+rolling_std_28,True,0.15380749632834567,Wasserstein distance (normed),0.05
+lag_7,True,0.15696276731137088,Wasserstein distance (normed),0.05
+rolling_mean_7,True,0.30779478378487796,Wasserstein distance (normed),0.05
+rolling_mean_14,True,0.39096740260614005,Wasserstein distance (normed),0.05
+rolling_mean_28,True,0.4433260153010297,Wasserstein distance (normed),0.05
