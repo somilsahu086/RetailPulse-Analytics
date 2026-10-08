@@ -1,0 +1,17 @@
+{
+  "tuning_method": "Optuna TPESampler",
+  "random_seed": 42,
+  "validation_metric": "MAE",
+  "validation_window": "2011-10-11 to 2011-11-09 (30 Days)",
+  "leakage_safeguard": "Final holdout (2011-11-10 to 2011-12-09) strictly excluded",
+  "prophet_tuned_params": {
+    "changepoint_prior_scale": 0.5,
+    "seasonality_prior_scale": 1.0
+  },
+  "lstm_tuned_params": {
+    "lookback": 30,
+    "hidden_dim": 64,
+    "lr": 0.02,
+    "epochs": 20
+  }
+}

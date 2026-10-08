@@ -15,5 +15,9 @@ prophet>=1.1.0
 torch>=2.0.0
 lightgbm>=4.0.0
 
+# MLOps, Experiment Tracking & Hyperparameter Tuning (Phase 6)
+mlflow>=2.14.0
+optuna>=3.6.0
+
 # Testing & Quality
 pytest>=7.0.0

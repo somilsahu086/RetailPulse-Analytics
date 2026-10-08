@@ -196,7 +196,9 @@ def train_predict_ensemble(
     weights: Optional[Dict[str, float]] = None,
     lookback: int = 30,
     date_col: str = "Date",
-    demand_col: str = "Demand"
+    demand_col: str = "Demand",
+    prophet_params: Optional[dict] = None,
+    lstm_params: Optional[dict] = None
 ) -> pd.DataFrame:
     """
     Train and combine component forecasting models (Prophet, LightGBM/LSTM, and Baseline).
@@ -212,7 +214,8 @@ def train_predict_ensemble(
 
     # 1. Prophet
     if "Prophet" in weights and weights["Prophet"] > 0.0:
-        p_df = train_predict_prophet(history_df, horizon=horizon, date_col=date_col, demand_col=demand_col)
+        p_kwargs = prophet_params or {}
+        p_df = train_predict_prophet(history_df, horizon=horizon, date_col=date_col, demand_col=demand_col, **p_kwargs)
         preds_dict["Prophet"] = p_df["Predicted_Demand"].values
         dates = p_df[date_col].values
         lower_bound = p_df["Lower_Bound"].values
@@ -228,7 +231,10 @@ def train_predict_ensemble(
 
     # 2. LSTM
     if "LSTM" in weights and weights["LSTM"] > 0.0:
-        l_df = train_predict_lstm(history_df, horizon=horizon, lookback=lookback, date_col=date_col, demand_col=demand_col)
+        l_kwargs = {"lookback": lookback}
+        if lstm_params:
+            l_kwargs.update(lstm_params)
+        l_df = train_predict_lstm(history_df, horizon=horizon, date_col=date_col, demand_col=demand_col, **l_kwargs)
         preds_dict["LSTM"] = l_df["Predicted_Demand"].values
 
     # 3. LightGBM
@@ -275,7 +281,9 @@ def evaluate_product_phase5(
     val_days: int = 30,
     lookback: int = 30,
     lstm_epochs: int = 25,
-    prophet_weight: Optional[float] = None
+    prophet_weight: Optional[float] = None,
+    prophet_params: Optional[dict] = None,
+    lstm_params: Optional[dict] = None
 ) -> Tuple[Dict[str, Dict[str, float]], pd.DataFrame, float]:
     """
     Train, optimize weights, and evaluate Prophet, LSTM, and their Ensemble for one product.
@@ -283,15 +291,20 @@ def evaluate_product_phase5(
     train_sorted = train_history_df.sort_values("Date").copy()
     test_sorted = holdout_test_df.sort_values("Date").copy()
 
+    p_kwargs = prophet_params or {}
+    l_kwargs = {"lookback": lookback, "epochs": lstm_epochs}
+    if lstm_params:
+        l_kwargs.update(lstm_params)
+
     # Step 1: Internal validation weight tuning if weight not supplied
     if prophet_weight is None:
-        if len(train_sorted) > (val_days + lookback + 10):
+        if len(train_sorted) > (val_days + l_kwargs.get("lookback", lookback) + 10):
             val_cutoff = train_sorted["Date"].iloc[-val_days]
             pre_train = train_sorted[train_sorted["Date"] < val_cutoff].copy()
             val_df = train_sorted[train_sorted["Date"] >= val_cutoff].copy()
 
-            val_prophet = train_predict_prophet(pre_train, horizon=len(val_df))
-            val_lstm = train_predict_lstm(pre_train, horizon=len(val_df), lookback=lookback, epochs=lstm_epochs)
+            val_prophet = train_predict_prophet(pre_train, horizon=len(val_df), **p_kwargs)
+            val_lstm = train_predict_lstm(pre_train, horizon=len(val_df), **l_kwargs)
 
             y_val_true = val_df["Demand"].values
             opt_w, _, _ = optimize_ensemble_weights(
@@ -307,8 +320,8 @@ def evaluate_product_phase5(
         selected_weight = float(prophet_weight)
 
     # Step 2: Fit on full training history
-    p_preds = train_predict_prophet(train_sorted, horizon=horizon)
-    l_preds = train_predict_lstm(train_sorted, horizon=horizon, lookback=lookback, epochs=lstm_epochs)
+    p_preds = train_predict_prophet(train_sorted, horizon=horizon, **p_kwargs)
+    l_preds = train_predict_lstm(train_sorted, horizon=horizon, **l_kwargs)
     e_preds = combine_prophet_lstm_predictions(p_preds, l_preds, prophet_weight=selected_weight)
 
     # Step 3: Evaluate on untouched holdout test ground truth

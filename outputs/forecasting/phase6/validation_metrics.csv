@@ -1,0 +1,8 @@
+Model,Product Count,Val MAE,Val RMSE,Val MAPE (%),Val sMAPE (%)
+Prophet+LSTM Ensemble (Tuned),50,57.1236,112.0893,338.43,104.03
+Baseline MA28,50,61.9007,111.8789,347.45,111.07
+PyTorch LSTM (Tuned),50,65.2622,118.159,429.22,114.43
+Prophet+LSTM Ensemble (Default),50,67.2703,114.9398,436.55,114.47
+PyTorch LSTM (Default),50,67.9808,119.6334,422.73,114.81
+Prophet (Tuned),50,69.3301,119.0125,463.3,104.89
+Prophet (Default),50,73.71,119.98,472.92,105.65
