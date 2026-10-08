@@ -217,3 +217,10 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 outputs/forecasting/phase6/mlruns/
+
+# Apache Airflow runtime files
+airflow/logs/
+airflow/*.db
+airflow/*.cfg
+airflow/*.pid
+airflow/airflow-webserver.pid

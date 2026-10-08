@@ -1,0 +1,66 @@
+{
+  "metadata_version": "1.0.0",
+  "timestamp": "2026-10-08T07:53:56.293939Z",
+  "project": "RetailPulse Analytics",
+  "module": "Demand Forecasting",
+  "phase": "Phase 6 MLOps",
+  "selected_model": "Retrained Prophet + LSTM Ensemble",
+  "forecast_horizon": 30,
+  "random_seed": 42,
+  "temporal_timeline": {
+    "training_period": "2009-12-01 to 2011-10-10 (Pre-Train) / 2009-12-01 to 2011-11-09 (Full Train)",
+    "validation_period": "2011-10-11 to 2011-11-09 (30 Days)",
+    "holdout_period": "2011-11-10 to 2011-12-09 (30 Days)",
+    "leakage_prevention": "Hyperparameter tuning (Optuna) and ensemble weighting were performed strictly on the internal validation window (2011-10-11 to 2011-11-09). The final 30-day holdout test set (2011-11-10 to 2011-12-09) was strictly sequestered and untouched until post-tuning evaluation."
+  },
+  "tuned_parameters": {
+    "Prophet": {
+      "changepoint_prior_scale": 0.05,
+      "seasonality_prior_scale": 10.0
+    },
+    "PyTorch_LSTM": {
+      "lookback": 30,
+      "hidden_dim": 32,
+      "lr": 0.01,
+      "epochs": 20
+    }
+  },
+  "ensemble_weights": {
+    "Prophet": 0.5,
+    "LSTM": 0.5
+  },
+  "validation_metrics": {
+    "status": "Orchestrated by Airflow automated retraining DAG"
+  },
+  "holdout_metrics": {
+    "production_mae": 107.04194,
+    "candidate_mae": 101.33378
+  },
+  "environment_packages": {
+    "python": "3.10.11",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "os": "Windows",
+    "PyTorch": "2.14.1+cpu",
+    "Prophet": "1.4.0",
+    "Optuna": "5.0.0",
+    "MLflow": "3.17.0",
+    "LightGBM": "4.7.0",
+    "scikit-learn": "1.7.2",
+    "pandas": "2.3.3",
+    "numpy": "2.2.6",
+    "pyarrow": "25.0.1"
+  },
+  "extra_metadata": {
+    "phase": "Phase 8 Airflow Retraining Orchestration",
+    "orchestrator": "Apache Airflow (DAG: demand_forecasting_retraining)",
+    "drift_audit": {
+      "status": "DRIFT_MONITORED",
+      "dataset_drift_detected": true,
+      "share_of_drifted_features": 1.0,
+      "number_of_drifted_features": 12,
+      "total_monitored_features": 12,
+      "drift_threshold": 0.05
+    },
+    "promotion_decision": "PROMOTED_NEW_MODEL"
+  }
+}

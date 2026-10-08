@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-10-08T07:53:56.295947Z",
+  "dag_id": "demand_forecasting_retraining",
+  "workflow_status": "SUCCESS",
+  "active_model": "Retrained Prophet + LSTM Ensemble",
+  "promotion_decision": "PROMOTED_NEW_MODEL",
+  "drift_detected": true,
+  "leakage_safeguard": "Verified: Train cutoff strictly 2011-11-09. Holdout 2011-11-10 to 2011-12-09 untouched during retraining."
+}

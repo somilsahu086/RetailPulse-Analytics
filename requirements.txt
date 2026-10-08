@@ -22,5 +22,8 @@ optuna>=3.6.0
 # Model Monitoring & Drift Detection (Phase 7)
 evidently>=0.4.0
 
+# Workflow Orchestration & Automated Retraining (Phase 8)
+apache-airflow>=2.8.0,<3.0.0
+
 # Testing & Quality
 pytest>=7.0.0

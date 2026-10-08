@@ -1,0 +1,17 @@
+{
+  "dag_id": "demand_forecasting_retraining",
+  "execution_date": "2026-10-08T07:53:56.813667Z",
+  "mlflow_run_id": "bc170b1ff5f14248ad31f32d20a83268",
+  "experiment_name": "RetailPulse-Demand-Forecasting",
+  "tasks_executed": [
+    "data_validation",
+    "preprocessing",
+    "drift_monitoring",
+    "hyperparameter_tuning",
+    "model_training",
+    "model_evaluation",
+    "model_metadata",
+    "mlflow_tracking"
+  ],
+  "overall_status": "SUCCESS"
+}

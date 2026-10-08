@@ -1,0 +1,10 @@
+{
+  "evaluation_timestamp": "2026-10-08T07:53:56.263019Z",
+  "promotion_decision": "PROMOTED_NEW_MODEL",
+  "active_production_model": "Retrained Prophet + LSTM Ensemble",
+  "production_holdout_mae": 107.0419,
+  "candidate_holdout_mae": 101.3338,
+  "relative_improvement_percent": 5.33,
+  "promotion_threshold_percent": 2.0,
+  "decision_rationale": "Candidate model improved Holdout MAE by 5.33% (exceeding 2.0% threshold)."
+}
