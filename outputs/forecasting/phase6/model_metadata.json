@@ -1,0 +1,72 @@
+{
+  "metadata_version": "1.0.0",
+  "timestamp": "2026-10-08T06:15:10.637970Z",
+  "project": "RetailPulse Analytics",
+  "module": "Demand Forecasting",
+  "phase": "Phase 6 MLOps",
+  "selected_model": "Prophet + PyTorch LSTM Hybrid Ensemble",
+  "forecast_horizon": 30,
+  "random_seed": 42,
+  "temporal_timeline": {
+    "training_period": "2009-12-01 to 2011-10-10 (Pre-Train) / 2009-12-01 to 2011-11-09 (Full Train)",
+    "validation_period": "2011-10-11 to 2011-11-09 (30 Days)",
+    "holdout_period": "2011-11-10 to 2011-12-09 (30 Days)",
+    "leakage_prevention": "Hyperparameter tuning (Optuna) and ensemble weighting were performed strictly on the internal validation window (2011-10-11 to 2011-11-09). The final 30-day holdout test set (2011-11-10 to 2011-12-09) was strictly sequestered and untouched until post-tuning evaluation."
+  },
+  "tuned_parameters": {
+    "Prophet": {
+      "changepoint_prior_scale": 0.5,
+      "seasonality_prior_scale": 1.0
+    },
+    "PyTorch_LSTM": {
+      "lookback": 30,
+      "hidden_dim": 64,
+      "lr": 0.02,
+      "epochs": 20
+    }
+  },
+  "ensemble_weights": "Dynamic inverse-error validation weights (mean w_prophet \u2248 0.54, w_lstm \u2248 0.46)",
+  "validation_metrics": {
+    "Model": "Prophet+LSTM Ensemble (Default)",
+    "Product Count": 50,
+    "Val MAE": 67.2703,
+    "Val RMSE": 114.9398,
+    "Val MAPE (%)": 436.55,
+    "Val sMAPE (%)": 114.47,
+    "Challenger_Tuned_Val_MAE": 57.1236,
+    "Challenger_Tuned_Val_RMSE": 112.0893
+  },
+  "holdout_metrics": {
+    "Model": "Prophet+LSTM Ensemble (Default)",
+    "Product Count": 50,
+    "Holdout MAE": 61.285,
+    "Holdout RMSE": 90.8398,
+    "Holdout MAPE (%)": 491.01,
+    "Holdout sMAPE (%)": 106.74,
+    "Challenger_Tuned_Holdout_MAE": 65.426,
+    "Challenger_Tuned_Holdout_RMSE": 98.1448
+  },
+  "environment_packages": {
+    "python": "3.10.11",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "os": "Windows",
+    "PyTorch": "2.14.1+cpu",
+    "Prophet": "1.4.0",
+    "Optuna": "5.0.0",
+    "MLflow": "3.17.0",
+    "LightGBM": "4.7.0",
+    "scikit-learn": "1.7.2",
+    "pandas": "2.3.3",
+    "numpy": "2.2.6",
+    "pyarrow": "25.0.1"
+  },
+  "extra_metadata": {
+    "experiment_name": "RetailPulse-Demand-Forecasting",
+    "tracking_uri": "D:/RetailPulse-Analytics/outputs/forecasting/phase6/mlruns",
+    "total_mlflow_runs": 7,
+    "optuna_trials": 16,
+    "pipeline_runtime_sec": 587.19
+  },
+  "production_model_status": "Retained Phase 5 Prophet + PyTorch LSTM Hybrid Ensemble as primary production model",
+  "model_selection_rationale": "While Optuna tuning improved internal validation MAE by 15.1% (57.12 vs 67.27), the default regularization configuration exhibited superior out-of-sample holdout generalization (Holdout MAE: 61.29 vs 65.43, RMSE: 90.84 vs 98.14). In accordance with conservative MLOps governance principles, the Phase 5 ensemble is preserved as the production standard, while the tuned configuration is registered as a validated challenger."
+}

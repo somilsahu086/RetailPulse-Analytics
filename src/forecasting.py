@@ -51,7 +51,9 @@ def train_predict_prophet(
     demand_col: str = "Demand",
     add_uk_holidays: bool = True,
     weekly_seasonality: bool = True,
-    yearly_seasonality: bool = True
+    yearly_seasonality: bool = True,
+    changepoint_prior_scale: float = 0.05,
+    seasonality_prior_scale: float = 10.0
 ) -> pd.DataFrame:
     """
     Train Facebook Prophet model on historical demand and generate multi-step forecasts.
@@ -61,6 +63,7 @@ def train_predict_prophet(
     - Weekly seasonality explicitly capturing Saturday store closures.
     - Yearly seasonality capturing annual pre-holiday retail ramp.
     - Official UK Bank Holidays to anticipate bank holiday trading dips.
+    - Tunable changepoint_prior_scale and seasonality_prior_scale.
     - Non-negative clipping on predicted demand and intervals.
 
     Parameters
@@ -79,6 +82,10 @@ def train_predict_prophet(
         Enable weekly seasonality.
     yearly_seasonality : bool
         Enable yearly seasonality.
+    changepoint_prior_scale : float
+        Flexibility of the automatic changepoint selection (default 0.05).
+    seasonality_prior_scale : float
+        Strength of the seasonality component (default 10.0).
 
     Returns
     -------
@@ -103,6 +110,8 @@ def train_predict_prophet(
         daily_seasonality=False,
         weekly_seasonality=weekly_seasonality,
         yearly_seasonality=yearly_seasonality,
+        changepoint_prior_scale=changepoint_prior_scale,
+        seasonality_prior_scale=seasonality_prior_scale,
         interval_width=0.80  # 80% confidence interval for inventory safety stock
     )
 
