@@ -224,3 +224,7 @@ airflow/*.db
 airflow/*.cfg
 airflow/*.pid
 airflow/airflow-webserver.pid
+
+# Business Overview local cache files
+data/cleaned_data.parquet
+data/business_overview_summary.json
