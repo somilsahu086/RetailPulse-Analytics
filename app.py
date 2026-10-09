@@ -222,6 +222,33 @@ def load_retraining_artifacts(project_dir: str = PROJECT_ROOT) -> Tuple[Dict[str
 
 
 # =========================================================================
+# Streamlit contribution — Business Overview (feature branch:
+# feat/streamlit-business-overview). Teammate code above untouched.
+# =========================================================================
+@st.cache_data(show_spinner=False)
+def load_business_transactions(project_dir: str = PROJECT_ROOT) -> pd.DataFrame:
+    """Load cleaned retail transactions for the business overview tab (read-only)."""
+    path = os.path.join(project_dir, "data", "cleaned_data.xlsx")
+    if not os.path.exists(path):
+        return pd.DataFrame()
+    try:
+        df = pd.read_excel(
+            path,
+            sheet_name=None,
+            usecols=["Invoice", "StockCode", "Quantity", "InvoiceDate", "Price", "Customer ID", "Revenue"],
+        )
+        if isinstance(df, dict):
+            df = pd.concat(df.values(), ignore_index=True)
+    except Exception:
+        return pd.DataFrame()
+    if df.empty:
+        return df
+    df["InvoiceDate"] = pd.to_datetime(df["InvoiceDate"], errors="coerce")
+    df = df.dropna(subset=["InvoiceDate"])
+    return df
+
+
+# =========================================================================
 # Main UI Dashboard Renderer
 # =========================================================================
 
@@ -448,13 +475,73 @@ def render_dashboard():
     st.markdown("<br>", unsafe_allow_html=True)
 
     # ---------------- Tabs ----------------
-    tab_forecast, tab_inventory, tab_models, tab_drift, tab_retraining = st.tabs([
+    tab_business, tab_forecast, tab_inventory, tab_models, tab_drift, tab_retraining = st.tabs([
+        "🏪 Business Overview",
         "📈 Forecast & Historical Trends",
         "📦 Inventory Optimization",
         "📊 Model Benchmark & Accuracy",
         "🛡️ Drift & Data Quality",
         "⚙️ MLOps & Airflow Retraining"
     ])
+
+    # --- TAB 0: Business Overview ---
+    with tab_business:
+        st.subheader("Business Overview — Sales at a Glance")
+        biz_df = load_business_transactions()
+        if biz_df.empty:
+            st.warning("No business transactions found at `data/cleaned_data.xlsx`.")
+        else:
+            total_revenue = float(biz_df["Revenue"].sum())
+            total_orders = int(biz_df["Invoice"].nunique())
+            total_customers = int(biz_df["Customer ID"].nunique())
+            avg_order_value = total_revenue / total_orders if total_orders else 0.0
+
+            b1, b2, b3, b4 = st.columns(4)
+            with b1:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-title">Total Revenue</div>
+                    <div class="metric-value">£{total_revenue:,.0f}</div>
+                    <div class="metric-sub">Cleaned sales data</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with b2:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-title">Total Orders</div>
+                    <div class="metric-value">{total_orders:,}</div>
+                    <div class="metric-sub">Unique invoices</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with b3:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-title">Total Customers</div>
+                    <div class="metric-value">{total_customers:,}</div>
+                    <div class="metric-sub">Unique customer IDs</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with b4:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-title">Avg Order Value</div>
+                    <div class="metric-value">£{avg_order_value:,.2f}</div>
+                    <div class="metric-sub">Revenue / Orders</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            monthly = biz_df.copy()
+            monthly["Month"] = monthly["InvoiceDate"].dt.to_period("M").dt.to_timestamp()
+            monthly_rev = monthly.groupby("Month", as_index=False)["Revenue"].sum().sort_values("Month")
+            rev_fig = px.line(
+                monthly_rev,
+                x="Month",
+                y="Revenue",
+                title="Monthly Revenue Trend",
+                markers=True,
+            )
+            rev_fig.update_layout(height=320, margin=dict(l=40, r=40, t=30, b=40))
+            st.plotly_chart(rev_fig, use_container_width=True)
 
     # --- TAB 1: Forecast Chart ---
     with tab_forecast:
