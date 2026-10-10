@@ -14,7 +14,6 @@ def train_and_save_model(rfm_df, model_save_path='../model/churn_model.pkl'):
     model = RandomForestClassifier(n_estimators=100, random_state=42)
     model.fit(X_train, y_train)
     
-    
     acc = accuracy_score(y_test, model.predict(X_test))
     print(f"Model Training Complete. Test Accuracy: {acc * 100:.2f}%")
     
@@ -22,7 +21,7 @@ def train_and_save_model(rfm_df, model_save_path='../model/churn_model.pkl'):
     print(f"Trained model saved at: {model_save_path}")
     return model
 
-def predict_churn(input_features, model_path='../src/churn_model.pkl'):
+def predict_churn(input_features, model_path='../model/churn_model.pkl'):
     
     model = joblib.load(model_path)
     prediction = model.predict(input_features)
