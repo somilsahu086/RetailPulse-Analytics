@@ -791,18 +791,17 @@ def render_dashboard():
             "Software Dependencies": "Prophet 1.4.0, PyTorch 2.14.1, LightGBM 4.7.0, Evidently 0.7.23, Airflow 2.11.2"
         })
 
-    # --- Executive Summary Card (only where its inventory numbers exist) ---
-    if page == "Inventory":
-        st.markdown("---")
-        st.markdown("### Executive Business Summary")
-        st.markdown(
-            f"""
-            - **Demand Projection:** SKU `{selected_sku}` ({sku_metadata['Description']}) is projected to consume **{total_forecast:,.0f} units** over the next **{horizon} days** (averaging **{mean_daily_forecast:,.1f} units/day**).
-            - **Inventory Posture:** Calculated Safety Stock buffer is **{ss_units:,} units** with a replenishment Reorder Point at **{rop_units:,} units** under a **{lead_time_days}-day** lead time.
-            - **Stockout Urgency:** Rated **{risk_class}** (Surge factor: {risk_info['surge_factor']}x).
-            - **Model Governance:** Operating under the **Prophet + PyTorch LSTM Hybrid Ensemble**, continuously monitored via Evidently AI and automated by Apache Airflow.
-            """
-        )
+    # --- Executive Summary Card ---
+    st.markdown("---")
+    st.markdown("### 📋 Executive Business Summary")
+    st.markdown(
+        f"""
+        - **Demand Projection:** SKU `{selected_sku}` ({sku_metadata['Description']}) is projected to consume **{total_forecast:,.0f} units** over the next **{horizon} days** (averaging **{mean_daily_forecast:,.1f} units/day**).
+        - **Inventory Posture:** Calculated Safety Stock buffer is **{ss_units:,} units** with a replenishment Reorder Point at **{rop_units:,} units** under a **{lead_time_days}-day** lead time.
+        - **Stockout Urgency:** Rated **{risk_class}** (Surge factor: {risk_info['surge_factor']}x).
+        - **Model Governance:** Operating under the **Prophet + PyTorch LSTM Hybrid Ensemble**, continuously monitored via Evidently AI and automated by Apache Airflow.
+        """
+    )
 
 
 # Only execute UI rendering when running under Streamlit runtime
