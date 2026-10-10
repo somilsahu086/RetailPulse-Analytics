@@ -262,31 +262,72 @@ def render_dashboard():
         initial_sidebar_state="expanded"
     )
 
-    # Clean, simple styling
+    # Custom styling
     st.markdown("""
     <style>
-        .main-header { font-size: 1.8rem; font-weight: 700; color: #1E3A8A; margin-bottom: 0.1rem; }
-        .sub-header { font-size: 0.95rem; color: #4B5563; margin-bottom: 1rem; }
-        .metric-card { background: #FFFFFF; border-radius: 8px; padding: 12px; border: 1px solid #E5E7EB; text-align: center; }
-        .metric-title { font-size: 0.75rem; color: #6B7280; text-transform: uppercase; font-weight: 600; }
-        .metric-value { font-size: 1.4rem; font-weight: 700; color: #1F2937; margin: 4px 0; }
-        .metric-sub { font-size: 0.75rem; color: #4B5563; }
-        .badge-low { background-color: #DEF7EC; color: #03543F; padding: 3px 8px; border-radius: 4px; font-weight: 600; }
-        .badge-med { background-color: #FEF08A; color: #713F12; padding: 3px 8px; border-radius: 4px; font-weight: 600; }
-        .badge-high { background-color: #FDE8E8; color: #9B1C1C; padding: 3px 8px; border-radius: 4px; font-weight: 600; }
+        .main-header {
+            font-size: 2.1rem;
+            font-weight: 700;
+            color: #1E3A8A;
+            margin-bottom: 0.2rem;
+        }
+        .sub-header {
+            font-size: 1.0rem;
+            color: #4B5563;
+            margin-bottom: 1.2rem;
+        }
+        .metric-card {
+            background: #F9FAFB;
+            border-radius: 8px;
+            padding: 14px;
+            border: 1px solid #E5E7EB;
+            text-align: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .metric-title {
+            font-size: 0.8rem;
+            color: #6B7280;
+            text-transform: uppercase;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+        }
+        .metric-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #1F2937;
+            margin: 4px 0;
+        }
+        .metric-sub {
+            font-size: 0.78rem;
+            color: #4B5563;
+        }
+        .badge-low {
+            background-color: #DEF7EC;
+            color: #03543F;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+        .badge-med {
+            background-color: #FEF08A;
+            color: #713F12;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+        .badge-high {
+            background-color: #FDE8E8;
+            color: #9B1C1C;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
     </style>
     """, unsafe_allow_html=True)
 
-    # ---------------- Sidebar Navigation + Controls ----------------
-    st.sidebar.title("RetailPulse")
-    page = st.sidebar.radio(
-        "Go to",
-        ["Business Overview", "Forecast", "Inventory", "Benchmarks", "Drift", "Retraining"],
-        index=0,
-    )
-    st.sidebar.markdown("---")
-
-    st.sidebar.subheader("Product")
+    # ---------------- Sidebar Controls ----------------
+    st.sidebar.image("https://img.icons8.com/fluency/96/combo-chart.png", width=56)
+    st.sidebar.title("RetailPulse Control")
 
     catalog_df = load_catalog()
     if catalog_df.empty:
@@ -331,24 +372,27 @@ def render_dashboard():
     selected_model_name = st.sidebar.selectbox("Forecasting Architecture:", model_options, index=0)
 
     st.sidebar.markdown("---")
-    st.sidebar.subheader("Inventory")
-    lead_time_days = st.sidebar.slider("Lead Time (Days):", min_value=1, max_value=30, value=7)
+    st.sidebar.subheader("📦 Inventory Controls")
+    lead_time_days = st.sidebar.slider("Replenishment Lead Time (Days):", min_value=1, max_value=30, value=7)
     service_level = st.sidebar.selectbox(
-        "Service Level:",
+        "Target Service Level:",
         [0.80, 0.85, 0.90, 0.95, 0.98, 0.99],
         index=3,
         format_func=lambda x: f"{int(x*100)}% (Z={get_z_score(x):.2f})"
     )
     review_period_days = st.sidebar.slider("Review Cycle (Days):", min_value=1, max_value=30, value=14)
 
-    if st.sidebar.button("Refresh Data", use_container_width=True):
+    if st.sidebar.button("🔄 Refresh Data & Cache", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
 
     # ---------------- Header ----------------
-    st.markdown('<div class="main-header">RetailPulse Analytics</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">RetailPulse Analytics — Demand Forecasting Dashboard</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="sub-header">Demand forecasting and inventory planning dashboard.</div>',
+        '<div class="sub-header">'
+        '<b>AI-Powered Time-Series Forecasting Platform</b> combining Facebook Prophet, '
+        'Deep Learning PyTorch LSTM, Continuous Evidently AI Drift Detection & Apache Airflow Orchestration.'
+        '</div>',
         unsafe_allow_html=True
     )
 
@@ -430,10 +474,19 @@ def render_dashboard():
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ---------------- Pages (sidebar navigation, no top tabs) ----------------
-    # Streamlit contribution — sidebar page router. Page content below unchanged.
-    if page == "Business Overview":
-        st.subheader("Business Overview")
+    # ---------------- Tabs ----------------
+    tab_business, tab_forecast, tab_inventory, tab_models, tab_drift, tab_retraining = st.tabs([
+        "🏪 Business Overview",
+        "📈 Forecast & Historical Trends",
+        "📦 Inventory Optimization",
+        "📊 Model Benchmark & Accuracy",
+        "🛡️ Drift & Data Quality",
+        "⚙️ MLOps & Airflow Retraining"
+    ])
+
+    # --- TAB 0: Business Overview ---
+    with tab_business:
+        st.subheader("Business Overview — Sales at a Glance")
         biz_df = load_business_transactions()
         if biz_df.empty:
             st.warning("No business transactions found at `data/cleaned_data.xlsx`.")
@@ -490,8 +543,9 @@ def render_dashboard():
             rev_fig.update_layout(height=320, margin=dict(l=40, r=40, t=30, b=40))
             st.plotly_chart(rev_fig, use_container_width=True)
 
-    elif page == "Forecast":
-        st.subheader(f"Demand Trajectory — {selected_sku}: {sku_metadata['Description']}")
+    # --- TAB 1: Forecast Chart ---
+    with tab_forecast:
+        st.subheader(f"30-Day Demand Trajectory — {selected_sku}: {sku_metadata['Description']}")
 
         if not sku_preds.empty and not historical_df.empty:
             cutoff_date = pd.Timestamp("2011-11-09")
@@ -600,8 +654,9 @@ def render_dashboard():
         else:
             st.warning(f"No precomputed forecast outputs available for SKU `{selected_sku}` under `{selected_model_name}`.")
 
-    elif page == "Inventory":
-        st.subheader(f"Inventory — {selected_sku}")
+    # --- TAB 2: Inventory Optimization ---
+    with tab_inventory:
+        st.subheader(f"Inventory Replenishment & Stockout Control — {selected_sku}")
 
         ss_units = calculate_safety_stock(
             daily_demand_std=std_daily_forecast,
@@ -674,8 +729,9 @@ def render_dashboard():
                 pie_fig.update_layout(height=280, margin=dict(l=20, r=20, t=30, b=20))
                 st.plotly_chart(pie_fig, use_container_width=True)
 
-    elif page == "Benchmarks":
-        st.subheader("Model Benchmarks")
+    # --- TAB 3: Model Benchmark ---
+    with tab_models:
+        st.subheader("Model Benchmarking & Holdout Evaluation")
 
         comparison_df = load_model_comparison_table()
         if not comparison_df.empty:
@@ -707,8 +763,9 @@ def render_dashboard():
             """
         )
 
-    elif page == "Drift":
-        st.subheader("Data Drift")
+    # --- TAB 4: Drift Monitoring ---
+    with tab_drift:
+        st.subheader("Evidently AI — Continuous Data & Feature Drift Monitoring")
 
         drift_summary, feature_drift_df = load_drift_monitoring_artifacts()
 
@@ -753,8 +810,9 @@ def render_dashboard():
         else:
             st.warning("No drift monitoring summary found at `outputs/forecasting/phase7/drift_summary.json`.")
 
-    elif page == "Retraining":
-        st.subheader("Retraining Pipeline")
+    # --- TAB 5: Retraining Pipeline ---
+    with tab_retraining:
+        st.subheader("Apache Airflow Retraining Pipeline & Model Governance")
 
         dag_summary, promotion_decision, retraining_metrics_df = load_retraining_artifacts()
 
@@ -791,18 +849,17 @@ def render_dashboard():
             "Software Dependencies": "Prophet 1.4.0, PyTorch 2.14.1, LightGBM 4.7.0, Evidently 0.7.23, Airflow 2.11.2"
         })
 
-    # --- Executive Summary Card (only where its inventory numbers exist) ---
-    if page == "Inventory":
-        st.markdown("---")
-        st.markdown("### Executive Business Summary")
-        st.markdown(
-            f"""
-            - **Demand Projection:** SKU `{selected_sku}` ({sku_metadata['Description']}) is projected to consume **{total_forecast:,.0f} units** over the next **{horizon} days** (averaging **{mean_daily_forecast:,.1f} units/day**).
-            - **Inventory Posture:** Calculated Safety Stock buffer is **{ss_units:,} units** with a replenishment Reorder Point at **{rop_units:,} units** under a **{lead_time_days}-day** lead time.
-            - **Stockout Urgency:** Rated **{risk_class}** (Surge factor: {risk_info['surge_factor']}x).
-            - **Model Governance:** Operating under the **Prophet + PyTorch LSTM Hybrid Ensemble**, continuously monitored via Evidently AI and automated by Apache Airflow.
-            """
-        )
+    # --- Executive Summary Card ---
+    st.markdown("---")
+    st.markdown("### 📋 Executive Business Summary")
+    st.markdown(
+        f"""
+        - **Demand Projection:** SKU `{selected_sku}` ({sku_metadata['Description']}) is projected to consume **{total_forecast:,.0f} units** over the next **{horizon} days** (averaging **{mean_daily_forecast:,.1f} units/day**).
+        - **Inventory Posture:** Calculated Safety Stock buffer is **{ss_units:,} units** with a replenishment Reorder Point at **{rop_units:,} units** under a **{lead_time_days}-day** lead time.
+        - **Stockout Urgency:** Rated **{risk_class}** (Surge factor: {risk_info['surge_factor']}x).
+        - **Model Governance:** Operating under the **Prophet + PyTorch LSTM Hybrid Ensemble**, continuously monitored via Evidently AI and automated by Apache Airflow.
+        """
+    )
 
 
 # Only execute UI rendering when running under Streamlit runtime
