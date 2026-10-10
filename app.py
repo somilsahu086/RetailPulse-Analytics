@@ -222,6 +222,61 @@ def load_retraining_artifacts(project_dir: str = PROJECT_ROOT) -> Tuple[Dict[str
 
 
 # =========================================================================
+# Streamlit contribution — Business Overview (feature branch:
+# =========================================================================
+# Business Overview Data Loading Helpers (Optimized for instant rendering)
+# =========================================================================
+@st.cache_data(show_spinner=False)
+def load_business_summary(project_dir: str = PROJECT_ROOT) -> Dict[str, Any]:
+    """Load pre-aggregated sales overview metrics for instantaneous tab rendering."""
+    summary_path = os.path.join(project_dir, "data", "business_overview_summary.json")
+    if os.path.exists(summary_path):
+        try:
+            with open(summary_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+@st.cache_data(show_spinner=False)
+def load_business_transactions(project_dir: str = PROJECT_ROOT) -> pd.DataFrame:
+    """Load cleaned retail transactions for the business overview tab (read-only)."""
+    # 1. First priority: fast parquet storage (< 0.1s load time)
+    parquet_path = os.path.join(project_dir, "data", "cleaned_data.parquet")
+    if os.path.exists(parquet_path):
+        try:
+            df = pd.read_parquet(
+                parquet_path,
+                columns=["Invoice", "StockCode", "Quantity", "InvoiceDate", "Price", "Customer ID", "Revenue"]
+            )
+            df["InvoiceDate"] = pd.to_datetime(df["InvoiceDate"], errors="coerce")
+            return df.dropna(subset=["InvoiceDate"])
+        except Exception:
+            pass
+
+    # 2. Fallback: Excel file (reads and concatenates all sheets to preserve all records)
+    excel_path = os.path.join(project_dir, "data", "cleaned_data.xlsx")
+    if os.path.exists(excel_path):
+        try:
+            df = pd.read_excel(
+                excel_path,
+                sheet_name=None,
+                usecols=["Invoice", "StockCode", "Quantity", "InvoiceDate", "Price", "Customer ID", "Revenue"],
+            )
+            if isinstance(df, dict):
+                df = pd.concat(df.values(), ignore_index=True)
+            if not df.empty:
+                df["InvoiceDate"] = pd.to_datetime(df["InvoiceDate"], errors="coerce")
+                df = df.dropna(subset=["InvoiceDate"])
+            return df
+        except Exception:
+            pass
+
+    return pd.DataFrame()
+
+
+# =========================================================================
 # Main UI Dashboard Renderer
 # =========================================================================
 
@@ -355,7 +410,7 @@ def render_dashboard():
     )
     review_period_days = st.sidebar.slider("Review Cycle (Days):", min_value=1, max_value=30, value=14)
 
-    if st.sidebar.button("🔄 Refresh Data & Cache", use_container_width=True):
+    if st.sidebar.button("🔄 Refresh Data & Cache", width="stretch"):
         st.cache_data.clear()
         st.rerun()
 
@@ -445,16 +500,110 @@ def render_dashboard():
         </div>
         """, unsafe_allow_html=True)
 
+    # Compute inventory replenishment metrics in advance so they are globally in scope
+    # for both Tab 2 (Inventory) and the Executive Business Summary card.
+    ss_units = calculate_safety_stock(
+        daily_demand_std=std_daily_forecast,
+        lead_time_days=lead_time_days,
+        service_level=service_level
+    )
+    rop_units = calculate_reorder_point(
+        daily_demand_mean=mean_daily_forecast,
+        safety_stock=ss_units,
+        lead_time_days=lead_time_days
+    )
+    order_up_to = calculate_order_up_to_level(
+        daily_demand_mean=mean_daily_forecast,
+        safety_stock=ss_units,
+        lead_time_days=lead_time_days,
+        review_period_days=review_period_days
+    )
+
     st.markdown("<br>", unsafe_allow_html=True)
 
     # ---------------- Tabs ----------------
-    tab_forecast, tab_inventory, tab_models, tab_drift, tab_retraining = st.tabs([
+    tab_business, tab_forecast, tab_inventory, tab_models, tab_drift, tab_retraining = st.tabs([
+        "🏪 Business Overview",
         "📈 Forecast & Historical Trends",
         "📦 Inventory Optimization",
         "📊 Model Benchmark & Accuracy",
         "🛡️ Drift & Data Quality",
         "⚙️ MLOps & Airflow Retraining"
     ])
+
+    # --- TAB 0: Business Overview ---
+    with tab_business:
+        st.subheader("Business Overview — Sales at a Glance")
+        biz_summary = load_business_summary()
+        if biz_summary:
+            total_revenue = float(biz_summary["total_revenue"])
+            total_orders = int(biz_summary["total_orders"])
+            total_customers = int(biz_summary["total_customers"])
+            avg_order_value = float(biz_summary["avg_order_value"])
+            monthly_rev = pd.DataFrame(biz_summary["monthly_revenue"])
+            monthly_rev["Month"] = pd.to_datetime(monthly_rev["Month"])
+        else:
+            biz_df = load_business_transactions()
+            if not biz_df.empty:
+                total_revenue = float(biz_df["Revenue"].sum())
+                total_orders = int(biz_df["Invoice"].nunique())
+                total_customers = int(biz_df["Customer ID"].nunique())
+                avg_order_value = total_revenue / total_orders if total_orders else 0.0
+                monthly = biz_df.copy()
+                monthly["Month"] = monthly["InvoiceDate"].dt.to_period("M").dt.to_timestamp()
+                monthly_rev = monthly.groupby("Month", as_index=False)["Revenue"].sum().sort_values("Month")
+            else:
+                total_revenue = None
+
+        if total_revenue is None:
+            st.warning(
+                "⚠️ No business transactions found at `data/cleaned_data.parquet` or `data/cleaned_data.xlsx`. "
+                "Please verify that the sales dataset is present in the `data/` directory."
+            )
+        else:
+            b1, b2, b3, b4 = st.columns(4)
+            with b1:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-title">Total Revenue</div>
+                    <div class="metric-value">£{total_revenue:,.0f}</div>
+                    <div class="metric-sub">Cleaned sales data</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with b2:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-title">Total Orders</div>
+                    <div class="metric-value">{total_orders:,}</div>
+                    <div class="metric-sub">Unique invoices</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with b3:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-title">Total Customers</div>
+                    <div class="metric-value">{total_customers:,}</div>
+                    <div class="metric-sub">Unique customer IDs</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with b4:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-title">Avg Order Value</div>
+                    <div class="metric-value">£{avg_order_value:,.2f}</div>
+                    <div class="metric-sub">Revenue / Orders</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            rev_fig = px.line(
+                monthly_rev,
+                x="Month",
+                y="Revenue",
+                title="Monthly Revenue Trend",
+                markers=True,
+            )
+            rev_fig.update_layout(height=320, margin=dict(l=40, r=40, t=30, b=40))
+            st.plotly_chart(rev_fig, width="stretch")
 
     # --- TAB 1: Forecast Chart ---
     with tab_forecast:
@@ -521,7 +670,7 @@ def render_dashboard():
                 xaxis=dict(title="Timeline (Date)", showgrid=True, gridcolor="#F3F4F6"),
                 yaxis=dict(title="Sales Demand (Units)", showgrid=True, gridcolor="#F3F4F6", rangemode="nonnegative")
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
             # Weekly Aggregation Summary
             sku_preds["Calendar_Week"] = sku_preds["Date"].dt.isocalendar().week
@@ -546,7 +695,7 @@ def render_dashboard():
                         "Start_Date": lambda d: d.strftime("%Y-%m-%d"),
                         "End_Date": lambda d: d.strftime("%Y-%m-%d")
                     }),
-                    use_container_width=True
+                    width="stretch"
                 )
             with col_w2:
                 st.markdown("##### 📥 Daily Forecast Export")
@@ -556,7 +705,7 @@ def render_dashboard():
                     data=csv_export,
                     file_name=f"demand_forecast_{selected_sku}_{selected_model_name[:8]}.csv",
                     mime="text/csv",
-                    use_container_width=True
+                    width="stretch"
                 )
                 st.info(
                     f"**Forecasting Metadata:**\n"
@@ -565,7 +714,10 @@ def render_dashboard():
                     f"- Zero-Demand Handling: Non-negative clipping strictly applied."
                 )
         else:
-            st.warning(f"No precomputed forecast outputs available for SKU `{selected_sku}` under `{selected_model_name}`.")
+            st.warning(
+                f"⚠️ No precomputed forecast outputs or historical series available for SKU `{selected_sku}` under `{selected_model_name}`. "
+                f"Please ensure Phase 2 data (`data/daily_demand_clean.parquet`) and Phase 5 prediction artifacts (`outputs/forecasting/phase5/ensemble_predictions.csv`) exist."
+            )
 
     # --- TAB 2: Inventory Optimization ---
     with tab_inventory:
@@ -640,7 +792,9 @@ def render_dashboard():
                     color_discrete_map={"LOW": "#10B981", "MEDIUM": "#FBBF24", "HIGH": "#EF4444"}
                 )
                 pie_fig.update_layout(height=280, margin=dict(l=20, r=20, t=30, b=20))
-                st.plotly_chart(pie_fig, use_container_width=True)
+                st.plotly_chart(pie_fig, width="stretch")
+            else:
+                st.info("ℹ️ Catalog-wide stockout risk assessment table not found at `outputs/forecasting/phase5/stockout_risk.csv`. Run Phase 5 inventory evaluation to populate risk ratings.")
 
     # --- TAB 3: Model Benchmark ---
     with tab_models:
@@ -649,7 +803,7 @@ def render_dashboard():
         comparison_df = load_model_comparison_table()
         if not comparison_df.empty:
             st.markdown("##### 🏆 Empirical Model Comparison (Top 50 Representative Products)")
-            st.dataframe(comparison_df.style.highlight_min(subset=["Holdout MAE", "Holdout RMSE"], color="#DEF7EC"), use_container_width=True)
+            st.dataframe(comparison_df.style.highlight_min(subset=["Holdout MAE", "Holdout RMSE"], color="#DEF7EC"), width="stretch")
 
             bar_fig = px.bar(
                 comparison_df,
@@ -660,7 +814,9 @@ def render_dashboard():
                 color_continuous_scale="Blues_r"
             )
             bar_fig.update_layout(height=320, margin=dict(l=40, r=40, t=30, b=40), xaxis_tickangle=-15)
-            st.plotly_chart(bar_fig, use_container_width=True)
+            st.plotly_chart(bar_fig, width="stretch")
+        else:
+            st.warning("⚠️ Model comparison benchmark table not found at `outputs/forecasting/phase6/tuned_model_comparison.csv`. Run Phase 6 evaluation to populate empirical model comparison results.")
 
         st.info(
             r"""
@@ -718,10 +874,12 @@ def render_dashboard():
                         lambda v: "color: red; font-weight: bold;" if v is True else "color: green;",
                         subset=["Drift Detected"]
                     ),
-                    use_container_width=True
+                    width="stretch"
                 )
+            else:
+                st.info("ℹ️ Feature drift breakdown table not found at `outputs/forecasting/phase7/feature_drift.csv`.")
         else:
-            st.warning("No drift monitoring summary found at `outputs/forecasting/phase7/drift_summary.json`.")
+            st.warning("⚠️ No drift monitoring summary found at `outputs/forecasting/phase7/drift_summary.json`.")
 
     # --- TAB 5: Retraining Pipeline ---
     with tab_retraining:
@@ -751,7 +909,9 @@ def render_dashboard():
 
         if not retraining_metrics_df.empty:
             st.markdown("##### 📈 Candidate vs. Production Model Retraining Performance")
-            st.dataframe(retraining_metrics_df, use_container_width=True)
+            st.dataframe(retraining_metrics_df, width="stretch")
+        else:
+            st.info("ℹ️ Retraining performance metrics table not found at `outputs/forecasting/phase8/retraining_metrics.csv`.")
 
         st.markdown("##### 🏷️ MLOps Tracking & Governance Manifest")
         st.json({
