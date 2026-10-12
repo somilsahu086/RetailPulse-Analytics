@@ -248,7 +248,7 @@ def load_business_transactions(project_dir: str = PROJECT_ROOT) -> pd.DataFrame:
         try:
             df = pd.read_parquet(
                 parquet_path,
-                columns=["Invoice", "StockCode", "Quantity", "InvoiceDate", "Price", "Customer ID", "Revenue"]
+                columns=["Invoice", "StockCode", "Description", "Quantity", "InvoiceDate", "Price", "Customer ID", "Country", "Revenue"]
             )
             df["InvoiceDate"] = pd.to_datetime(df["InvoiceDate"], errors="coerce")
             return df.dropna(subset=["InvoiceDate"])
@@ -262,7 +262,7 @@ def load_business_transactions(project_dir: str = PROJECT_ROOT) -> pd.DataFrame:
             df = pd.read_excel(
                 excel_path,
                 sheet_name=None,
-                usecols=["Invoice", "StockCode", "Quantity", "InvoiceDate", "Price", "Customer ID", "Revenue"],
+                usecols=["Invoice", "StockCode", "Description", "Quantity", "InvoiceDate", "Price", "Customer ID", "Country", "Revenue"],
             )
             if isinstance(df, dict):
                 df = pd.concat(df.values(), ignore_index=True)
@@ -294,20 +294,21 @@ def render_dashboard():
     st.markdown("""
     <style>
         .main-header {
-            font-size: 2.1rem;
+            font-size: 1.9rem;
             font-weight: 700;
             color: #1E3A8A;
-            margin-bottom: 0.2rem;
+            margin-bottom: 0.35rem;
         }
         .sub-header {
-            font-size: 1.0rem;
+            font-size: 0.95rem;
             color: #4B5563;
-            margin-bottom: 1.2rem;
+            margin-bottom: 1.0rem;
+            line-height: 1.5;
         }
         .metric-card {
             background: #F9FAFB;
-            border-radius: 8px;
-            padding: 14px;
+            border-radius: 10px;
+            padding: 16px;
             border: 1px solid #E5E7EB;
             text-align: center;
             box-shadow: 0 1px 3px rgba(0,0,0,0.05);
@@ -354,8 +355,8 @@ def render_dashboard():
     """, unsafe_allow_html=True)
 
     # ---------------- Sidebar Controls ----------------
-    st.sidebar.image("https://img.icons8.com/fluency/96/combo-chart.png", width=56)
     st.sidebar.title("RetailPulse Control")
+    st.sidebar.caption("Demand forecasting & inventory")
 
     catalog_df = load_catalog()
     if catalog_df.empty:
@@ -388,40 +389,50 @@ def render_dashboard():
     selected_sku = sku_mapping[selected_label]
     sku_metadata = catalog_df[catalog_df["StockCode"] == selected_sku].iloc[0]
 
-    horizon = st.sidebar.slider("Forecast Horizon (Days):", min_value=7, max_value=30, value=30, step=7)
-
-    model_options = [
-        "Prophet + PyTorch LSTM Ensemble (Production)",
-        "Prophet (Decomposable Trend + Seasonality)",
-        "PyTorch LSTM (Deep Neural Sequence)",
-        "LightGBM (Gradient Boosted Lags)",
-        "Moving Average 28D (Baseline Benchmark)"
-    ]
-    selected_model_name = st.sidebar.selectbox("Forecasting Architecture:", model_options, index=0)
-
     st.sidebar.markdown("---")
-    st.sidebar.subheader("📦 Inventory Controls")
-    lead_time_days = st.sidebar.slider("Replenishment Lead Time (Days):", min_value=1, max_value=30, value=7)
-    service_level = st.sidebar.selectbox(
-        "Target Service Level:",
-        [0.80, 0.85, 0.90, 0.95, 0.98, 0.99],
-        index=3,
-        format_func=lambda x: f"{int(x*100)}% (Z={get_z_score(x):.2f})"
-    )
-    review_period_days = st.sidebar.slider("Review Cycle (Days):", min_value=1, max_value=30, value=14)
 
     if st.sidebar.button("🔄 Refresh Data & Cache", width="stretch"):
         st.cache_data.clear()
         st.rerun()
 
     # ---------------- Header ----------------
-    st.markdown('<div class="main-header">RetailPulse Analytics — Demand Forecasting Dashboard</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">RetailPulse Analytics</div>', unsafe_allow_html=True)
     st.markdown(
         '<div class="sub-header">'
-        '<b>AI-Powered Time-Series Forecasting Platform</b> combining Facebook Prophet, '
-        'Deep Learning PyTorch LSTM, Continuous Evidently AI Drift Detection & Apache Airflow Orchestration.'
+        'Demand forecasting, inventory planning, and model monitoring in one place.'
         '</div>',
         unsafe_allow_html=True
+    )
+
+    # ---------------- Shared page state (widgets live on their pages) ----------------
+    MODEL_OPTIONS = [
+        "Prophet + PyTorch LSTM Ensemble (Production)",
+        "Prophet (Decomposable Trend + Seasonality)",
+        "PyTorch LSTM (Deep Neural Sequence)",
+        "LightGBM (Gradient Boosted Lags)",
+        "Moving Average 28D (Baseline Benchmark)"
+    ]
+    _PAGE_DEFAULTS = {
+        "horizon": 30,
+        "forecast_model": MODEL_OPTIONS[0],
+        "lead_time_days": 7,
+        "service_level": 0.95,
+        "review_period_days": 14,
+    }
+    for _k, _v in _PAGE_DEFAULTS.items():
+        if _k not in st.session_state:
+            st.session_state[_k] = _v
+    horizon = st.session_state["horizon"]
+    selected_model_name = st.session_state["forecast_model"]
+    lead_time_days = st.session_state["lead_time_days"]
+    service_level = st.session_state["service_level"]
+    review_period_days = st.session_state["review_period_days"]
+
+    # ---------------- Header navigation (website-style) ----------------
+    page = st.segmented_control(
+        "Navigate",
+        options=["Overview", "Forecast", "Inventory", "Models", "Drift", "Retraining"],
+        default="Overview",
     )
 
     # ---------------- Predictions & Metrics ----------------
@@ -521,18 +532,10 @@ def render_dashboard():
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ---------------- Tabs ----------------
-    tab_business, tab_forecast, tab_inventory, tab_models, tab_drift, tab_retraining = st.tabs([
-        "🏪 Business Overview",
-        "📈 Forecast & Historical Trends",
-        "📦 Inventory Optimization",
-        "📊 Model Benchmark & Accuracy",
-        "🛡️ Drift & Data Quality",
-        "⚙️ MLOps & Airflow Retraining"
-    ])
+    # ---------------- Pages (one visible at a time via header nav) ----------------
 
-    # --- TAB 0: Business Overview ---
-    with tab_business:
+    # --- PAGE: Business Overview ---
+    if page == "Overview":
         st.subheader("Business Overview — Sales at a Glance")
         biz_summary = load_business_summary()
         if biz_summary:
@@ -543,22 +546,59 @@ def render_dashboard():
             monthly_rev = pd.DataFrame(biz_summary["monthly_revenue"])
             monthly_rev["Month"] = pd.to_datetime(monthly_rev["Month"])
         else:
-            biz_df = load_business_transactions()
+            with st.spinner("Loading cleaned sales transactions..."):
+                biz_df = load_business_transactions()
             if not biz_df.empty:
-                total_revenue = float(biz_df["Revenue"].sum())
-                total_orders = int(biz_df["Invoice"].nunique())
-                total_customers = int(biz_df["Customer ID"].nunique())
-                avg_order_value = total_revenue / total_orders if total_orders else 0.0
-                monthly = biz_df.copy()
-                monthly["Month"] = monthly["InvoiceDate"].dt.to_period("M").dt.to_timestamp()
-                monthly_rev = monthly.groupby("Month", as_index=False)["Revenue"].sum().sort_values("Month")
+                f1, f2 = st.columns(2)
+                with f1:
+                    if "Country" in biz_df.columns:
+                        country_list = sorted(biz_df["Country"].dropna().unique().tolist())
+                        selected_countries = st.multiselect(
+                            "Filter by Country:",
+                            options=country_list,
+                            default=country_list,
+                        )
+                    else:
+                        selected_countries = []
+                with f2:
+                    min_date = pd.to_datetime(biz_df["InvoiceDate"]).min().date()
+                    max_date = pd.to_datetime(biz_df["InvoiceDate"]).max().date()
+                    date_range = st.date_input(
+                        "Filter by Date Range:",
+                        value=(min_date, max_date),
+                        min_value=min_date,
+                        max_value=max_date,
+                    )
+                filtered = biz_df.copy()
+                if "Country" in filtered.columns:
+                    if selected_countries:
+                        filtered = filtered[filtered["Country"].isin(selected_countries)]
+                    else:
+                        filtered = filtered.iloc[0:0]
+                if isinstance(date_range, (list, tuple)) and len(date_range) == 2:
+                    start_d = pd.to_datetime(date_range[0])
+                    end_d = pd.to_datetime(date_range[1]) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+                    filtered = filtered[(filtered["InvoiceDate"] >= start_d) & (filtered["InvoiceDate"] <= end_d)]
+                if filtered.empty:
+                    total_revenue = None
+                    monthly_rev = pd.DataFrame()
+                else:
+                    total_revenue = float(filtered["Revenue"].sum())
+                    total_orders = int(filtered["Invoice"].nunique())
+                    total_customers = int(filtered["Customer ID"].nunique())
+                    avg_order_value = total_revenue / total_orders if total_orders else 0.0
+                    monthly = filtered.copy()
+                    monthly["Month"] = monthly["InvoiceDate"].dt.to_period("M").dt.to_timestamp()
+                    monthly_rev = monthly.groupby("Month", as_index=False)["Revenue"].sum().sort_values("Month")
+                    st.caption(f"Showing {len(filtered):,} transactions across {total_orders:,} orders.")
             else:
                 total_revenue = None
+                monthly_rev = pd.DataFrame()
 
         if total_revenue is None:
             st.warning(
-                "⚠️ No business transactions found at `data/cleaned_data.parquet` or `data/cleaned_data.xlsx`. "
-                "Please verify that the sales dataset is present in the `data/` directory."
+                "⚠️ No transactions match the current filters (or no sales dataset at `data/cleaned_data.parquet` or `data/cleaned_data.xlsx`). "
+                "Widen the date range or select at least one country."
             )
         else:
             b1, b2, b3, b4 = st.columns(4)
@@ -605,9 +645,41 @@ def render_dashboard():
             rev_fig.update_layout(height=320, margin=dict(l=40, r=40, t=30, b=40))
             st.plotly_chart(rev_fig, width="stretch")
 
-    # --- TAB 1: Forecast Chart ---
-    with tab_forecast:
+            if not biz_summary and "filtered" in locals() and not filtered.empty and "Country" in filtered.columns:
+                top_countries = (
+                    filtered.groupby("Country", as_index=False)["Revenue"]
+                    .sum()
+                    .sort_values("Revenue", ascending=False)
+                    .head(10)
+                )
+                country_fig = px.bar(
+                    top_countries,
+                    x="Country",
+                    y="Revenue",
+                    title="Top 10 Countries by Revenue (Filtered)",
+                    color="Revenue",
+                    color_continuous_scale="Blues",
+                )
+                country_fig.update_layout(height=320, margin=dict(l=40, r=40, t=30, b=40), xaxis_tickangle=-20)
+                st.plotly_chart(country_fig, width="stretch")
+                csv_monthly = monthly_rev.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    label="⬇️ Download Filtered Monthly Revenue CSV",
+                    data=csv_monthly,
+                    file_name="business_monthly_revenue_filtered.csv",
+                    mime="text/csv",
+                )
+
+    # --- PAGE: Forecast ---
+    if page == "Forecast":
         st.subheader(f"30-Day Demand Trajectory — {selected_sku}: {sku_metadata['Description']}")
+        fc1, fc2 = st.columns(2)
+        with fc1:
+            st.slider("Forecast Horizon (Days):", min_value=7, max_value=30, step=7, key="horizon")
+        with fc2:
+            st.selectbox("Forecasting Architecture:", MODEL_OPTIONS, key="forecast_model")
+        horizon = st.session_state["horizon"]
+        selected_model_name = st.session_state["forecast_model"]
 
         if not sku_preds.empty and not historical_df.empty:
             cutoff_date = pd.Timestamp("2011-11-09")
@@ -719,9 +791,24 @@ def render_dashboard():
                 f"Please ensure Phase 2 data (`data/daily_demand_clean.parquet`) and Phase 5 prediction artifacts (`outputs/forecasting/phase5/ensemble_predictions.csv`) exist."
             )
 
-    # --- TAB 2: Inventory Optimization ---
-    with tab_inventory:
+    # --- PAGE: Inventory ---
+    if page == "Inventory":
         st.subheader(f"Inventory Replenishment & Stockout Control — {selected_sku}")
+        ic1, ic2, ic3 = st.columns(3)
+        with ic1:
+            st.slider("Replenishment Lead Time (Days):", min_value=1, max_value=30, key="lead_time_days")
+        with ic2:
+            st.selectbox(
+                "Target Service Level:",
+                [0.80, 0.85, 0.90, 0.95, 0.98, 0.99],
+                key="service_level",
+                format_func=lambda x: f"{int(x*100)}% (Z={get_z_score(x):.2f})",
+            )
+        with ic3:
+            st.slider("Review Cycle (Days):", min_value=1, max_value=30, key="review_period_days")
+        lead_time_days = st.session_state["lead_time_days"]
+        service_level = st.session_state["service_level"]
+        review_period_days = st.session_state["review_period_days"]
 
         ss_units = calculate_safety_stock(
             daily_demand_std=std_daily_forecast,
@@ -791,13 +878,13 @@ def render_dashboard():
                     color="Risk_Level",
                     color_discrete_map={"LOW": "#10B981", "MEDIUM": "#FBBF24", "HIGH": "#EF4444"}
                 )
-                pie_fig.update_layout(height=280, margin=dict(l=20, r=20, t=30, b=20))
+                pie_fig.update_layout(height=320, margin=dict(l=20, r=20, t=30, b=20))
                 st.plotly_chart(pie_fig, width="stretch")
             else:
                 st.info("ℹ️ Catalog-wide stockout risk assessment table not found at `outputs/forecasting/phase5/stockout_risk.csv`. Run Phase 5 inventory evaluation to populate risk ratings.")
 
-    # --- TAB 3: Model Benchmark ---
-    with tab_models:
+    # --- PAGE: Models ---
+    if page == "Models":
         st.subheader("Model Benchmarking & Holdout Evaluation")
 
         comparison_df = load_model_comparison_table()
@@ -832,8 +919,8 @@ def render_dashboard():
             """
         )
 
-    # --- TAB 4: Drift Monitoring ---
-    with tab_drift:
+    # --- PAGE: Drift ---
+    if page == "Drift":
         st.subheader("Evidently AI — Continuous Data & Feature Drift Monitoring")
 
         drift_summary, feature_drift_df = load_drift_monitoring_artifacts()
@@ -881,8 +968,8 @@ def render_dashboard():
         else:
             st.warning("⚠️ No drift monitoring summary found at `outputs/forecasting/phase7/drift_summary.json`.")
 
-    # --- TAB 5: Retraining Pipeline ---
-    with tab_retraining:
+    # --- PAGE: Retraining ---
+    if page == "Retraining":
         st.subheader("Apache Airflow Retraining Pipeline & Model Governance")
 
         dag_summary, promotion_decision, retraining_metrics_df = load_retraining_artifacts()
