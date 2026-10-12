@@ -248,7 +248,7 @@ def load_business_transactions(project_dir: str = PROJECT_ROOT) -> pd.DataFrame:
         try:
             df = pd.read_parquet(
                 parquet_path,
-                columns=["Invoice", "StockCode", "Quantity", "InvoiceDate", "Price", "Customer ID", "Revenue"]
+                columns=["Invoice", "StockCode", "Description", "Quantity", "InvoiceDate", "Price", "Customer ID", "Country", "Revenue"]
             )
             df["InvoiceDate"] = pd.to_datetime(df["InvoiceDate"], errors="coerce")
             return df.dropna(subset=["InvoiceDate"])
@@ -262,7 +262,7 @@ def load_business_transactions(project_dir: str = PROJECT_ROOT) -> pd.DataFrame:
             df = pd.read_excel(
                 excel_path,
                 sheet_name=None,
-                usecols=["Invoice", "StockCode", "Quantity", "InvoiceDate", "Price", "Customer ID", "Revenue"],
+                usecols=["Invoice", "StockCode", "Description", "Quantity", "InvoiceDate", "Price", "Customer ID", "Country", "Revenue"],
             )
             if isinstance(df, dict):
                 df = pd.concat(df.values(), ignore_index=True)
@@ -543,22 +543,59 @@ def render_dashboard():
             monthly_rev = pd.DataFrame(biz_summary["monthly_revenue"])
             monthly_rev["Month"] = pd.to_datetime(monthly_rev["Month"])
         else:
-            biz_df = load_business_transactions()
+            with st.spinner("Loading cleaned sales transactions..."):
+                biz_df = load_business_transactions()
             if not biz_df.empty:
-                total_revenue = float(biz_df["Revenue"].sum())
-                total_orders = int(biz_df["Invoice"].nunique())
-                total_customers = int(biz_df["Customer ID"].nunique())
-                avg_order_value = total_revenue / total_orders if total_orders else 0.0
-                monthly = biz_df.copy()
-                monthly["Month"] = monthly["InvoiceDate"].dt.to_period("M").dt.to_timestamp()
-                monthly_rev = monthly.groupby("Month", as_index=False)["Revenue"].sum().sort_values("Month")
+                f1, f2 = st.columns(2)
+                with f1:
+                    if "Country" in biz_df.columns:
+                        country_list = sorted(biz_df["Country"].dropna().unique().tolist())
+                        selected_countries = st.multiselect(
+                            "Filter by Country:",
+                            options=country_list,
+                            default=country_list,
+                        )
+                    else:
+                        selected_countries = []
+                with f2:
+                    min_date = pd.to_datetime(biz_df["InvoiceDate"]).min().date()
+                    max_date = pd.to_datetime(biz_df["InvoiceDate"]).max().date()
+                    date_range = st.date_input(
+                        "Filter by Date Range:",
+                        value=(min_date, max_date),
+                        min_value=min_date,
+                        max_value=max_date,
+                    )
+                filtered = biz_df.copy()
+                if "Country" in filtered.columns:
+                    if selected_countries:
+                        filtered = filtered[filtered["Country"].isin(selected_countries)]
+                    else:
+                        filtered = filtered.iloc[0:0]
+                if isinstance(date_range, (list, tuple)) and len(date_range) == 2:
+                    start_d = pd.to_datetime(date_range[0])
+                    end_d = pd.to_datetime(date_range[1]) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+                    filtered = filtered[(filtered["InvoiceDate"] >= start_d) & (filtered["InvoiceDate"] <= end_d)]
+                if filtered.empty:
+                    total_revenue = None
+                    monthly_rev = pd.DataFrame()
+                else:
+                    total_revenue = float(filtered["Revenue"].sum())
+                    total_orders = int(filtered["Invoice"].nunique())
+                    total_customers = int(filtered["Customer ID"].nunique())
+                    avg_order_value = total_revenue / total_orders if total_orders else 0.0
+                    monthly = filtered.copy()
+                    monthly["Month"] = monthly["InvoiceDate"].dt.to_period("M").dt.to_timestamp()
+                    monthly_rev = monthly.groupby("Month", as_index=False)["Revenue"].sum().sort_values("Month")
+                    st.caption(f"Showing {len(filtered):,} transactions across {total_orders:,} orders.")
             else:
                 total_revenue = None
+                monthly_rev = pd.DataFrame()
 
         if total_revenue is None:
             st.warning(
-                "⚠️ No business transactions found at `data/cleaned_data.parquet` or `data/cleaned_data.xlsx`. "
-                "Please verify that the sales dataset is present in the `data/` directory."
+                "⚠️ No transactions match the current filters (or no sales dataset at `data/cleaned_data.parquet` or `data/cleaned_data.xlsx`). "
+                "Widen the date range or select at least one country."
             )
         else:
             b1, b2, b3, b4 = st.columns(4)
@@ -604,6 +641,31 @@ def render_dashboard():
             )
             rev_fig.update_layout(height=320, margin=dict(l=40, r=40, t=30, b=40))
             st.plotly_chart(rev_fig, width="stretch")
+
+            if not biz_summary and "filtered" in locals() and not filtered.empty and "Country" in filtered.columns:
+                top_countries = (
+                    filtered.groupby("Country", as_index=False)["Revenue"]
+                    .sum()
+                    .sort_values("Revenue", ascending=False)
+                    .head(10)
+                )
+                country_fig = px.bar(
+                    top_countries,
+                    x="Country",
+                    y="Revenue",
+                    title="Top 10 Countries by Revenue (Filtered)",
+                    color="Revenue",
+                    color_continuous_scale="Blues",
+                )
+                country_fig.update_layout(height=320, margin=dict(l=40, r=40, t=30, b=40), xaxis_tickangle=-20)
+                st.plotly_chart(country_fig, width="stretch")
+                csv_monthly = monthly_rev.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    label="⬇️ Download Filtered Monthly Revenue CSV",
+                    data=csv_monthly,
+                    file_name="business_monthly_revenue_filtered.csv",
+                    mime="text/csv",
+                )
 
     # --- TAB 1: Forecast Chart ---
     with tab_forecast:
