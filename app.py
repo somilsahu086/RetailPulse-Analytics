@@ -294,20 +294,21 @@ def render_dashboard():
     st.markdown("""
     <style>
         .main-header {
-            font-size: 2.1rem;
+            font-size: 1.9rem;
             font-weight: 700;
             color: #1E3A8A;
-            margin-bottom: 0.2rem;
+            margin-bottom: 0.35rem;
         }
         .sub-header {
-            font-size: 1.0rem;
+            font-size: 0.95rem;
             color: #4B5563;
-            margin-bottom: 1.2rem;
+            margin-bottom: 1.0rem;
+            line-height: 1.5;
         }
         .metric-card {
             background: #F9FAFB;
-            border-radius: 8px;
-            padding: 14px;
+            border-radius: 10px;
+            padding: 16px;
             border: 1px solid #E5E7EB;
             text-align: center;
             box-shadow: 0 1px 3px rgba(0,0,0,0.05);
@@ -354,8 +355,8 @@ def render_dashboard():
     """, unsafe_allow_html=True)
 
     # ---------------- Sidebar Controls ----------------
-    st.sidebar.image("https://img.icons8.com/fluency/96/combo-chart.png", width=56)
     st.sidebar.title("RetailPulse Control")
+    st.sidebar.caption("Demand forecasting & inventory")
 
     catalog_df = load_catalog()
     if catalog_df.empty:
@@ -415,11 +416,10 @@ def render_dashboard():
         st.rerun()
 
     # ---------------- Header ----------------
-    st.markdown('<div class="main-header">RetailPulse Analytics — Demand Forecasting Dashboard</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">RetailPulse Analytics</div>', unsafe_allow_html=True)
     st.markdown(
         '<div class="sub-header">'
-        '<b>AI-Powered Time-Series Forecasting Platform</b> combining Facebook Prophet, '
-        'Deep Learning PyTorch LSTM, Continuous Evidently AI Drift Detection & Apache Airflow Orchestration.'
+        'Demand forecasting, inventory planning, and model monitoring in one place.'
         '</div>',
         unsafe_allow_html=True
     )
@@ -523,12 +523,12 @@ def render_dashboard():
 
     # ---------------- Tabs ----------------
     tab_business, tab_forecast, tab_inventory, tab_models, tab_drift, tab_retraining = st.tabs([
-        "🏪 Business Overview",
-        "📈 Forecast & Historical Trends",
-        "📦 Inventory Optimization",
-        "📊 Model Benchmark & Accuracy",
-        "🛡️ Drift & Data Quality",
-        "⚙️ MLOps & Airflow Retraining"
+        "🏪 Overview",
+        "📈 Forecast",
+        "📦 Inventory",
+        "📊 Models",
+        "🛡️ Drift",
+        "⚙️ Retraining"
     ])
 
     # --- TAB 0: Business Overview ---
@@ -853,7 +853,7 @@ def render_dashboard():
                     color="Risk_Level",
                     color_discrete_map={"LOW": "#10B981", "MEDIUM": "#FBBF24", "HIGH": "#EF4444"}
                 )
-                pie_fig.update_layout(height=280, margin=dict(l=20, r=20, t=30, b=20))
+                pie_fig.update_layout(height=320, margin=dict(l=20, r=20, t=30, b=20))
                 st.plotly_chart(pie_fig, width="stretch")
             else:
                 st.info("ℹ️ Catalog-wide stockout risk assessment table not found at `outputs/forecasting/phase5/stockout_risk.csv`. Run Phase 5 inventory evaluation to populate risk ratings.")
