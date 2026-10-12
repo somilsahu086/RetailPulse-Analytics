@@ -389,27 +389,7 @@ def render_dashboard():
     selected_sku = sku_mapping[selected_label]
     sku_metadata = catalog_df[catalog_df["StockCode"] == selected_sku].iloc[0]
 
-    horizon = st.sidebar.slider("Forecast Horizon (Days):", min_value=7, max_value=30, value=30, step=7)
-
-    model_options = [
-        "Prophet + PyTorch LSTM Ensemble (Production)",
-        "Prophet (Decomposable Trend + Seasonality)",
-        "PyTorch LSTM (Deep Neural Sequence)",
-        "LightGBM (Gradient Boosted Lags)",
-        "Moving Average 28D (Baseline Benchmark)"
-    ]
-    selected_model_name = st.sidebar.selectbox("Forecasting Architecture:", model_options, index=0)
-
     st.sidebar.markdown("---")
-    st.sidebar.subheader("📦 Inventory Controls")
-    lead_time_days = st.sidebar.slider("Replenishment Lead Time (Days):", min_value=1, max_value=30, value=7)
-    service_level = st.sidebar.selectbox(
-        "Target Service Level:",
-        [0.80, 0.85, 0.90, 0.95, 0.98, 0.99],
-        index=3,
-        format_func=lambda x: f"{int(x*100)}% (Z={get_z_score(x):.2f})"
-    )
-    review_period_days = st.sidebar.slider("Review Cycle (Days):", min_value=1, max_value=30, value=14)
 
     if st.sidebar.button("🔄 Refresh Data & Cache", width="stretch"):
         st.cache_data.clear()
@@ -422,6 +402,37 @@ def render_dashboard():
         'Demand forecasting, inventory planning, and model monitoring in one place.'
         '</div>',
         unsafe_allow_html=True
+    )
+
+    # ---------------- Shared page state (widgets live on their pages) ----------------
+    MODEL_OPTIONS = [
+        "Prophet + PyTorch LSTM Ensemble (Production)",
+        "Prophet (Decomposable Trend + Seasonality)",
+        "PyTorch LSTM (Deep Neural Sequence)",
+        "LightGBM (Gradient Boosted Lags)",
+        "Moving Average 28D (Baseline Benchmark)"
+    ]
+    _PAGE_DEFAULTS = {
+        "horizon": 30,
+        "forecast_model": MODEL_OPTIONS[0],
+        "lead_time_days": 7,
+        "service_level": 0.95,
+        "review_period_days": 14,
+    }
+    for _k, _v in _PAGE_DEFAULTS.items():
+        if _k not in st.session_state:
+            st.session_state[_k] = _v
+    horizon = st.session_state["horizon"]
+    selected_model_name = st.session_state["forecast_model"]
+    lead_time_days = st.session_state["lead_time_days"]
+    service_level = st.session_state["service_level"]
+    review_period_days = st.session_state["review_period_days"]
+
+    # ---------------- Header navigation (website-style) ----------------
+    page = st.segmented_control(
+        "Navigate",
+        options=["Overview", "Forecast", "Inventory", "Models", "Drift", "Retraining"],
+        default="Overview",
     )
 
     # ---------------- Predictions & Metrics ----------------
@@ -521,18 +532,10 @@ def render_dashboard():
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ---------------- Tabs ----------------
-    tab_business, tab_forecast, tab_inventory, tab_models, tab_drift, tab_retraining = st.tabs([
-        "🏪 Overview",
-        "📈 Forecast",
-        "📦 Inventory",
-        "📊 Models",
-        "🛡️ Drift",
-        "⚙️ Retraining"
-    ])
+    # ---------------- Pages (one visible at a time via header nav) ----------------
 
-    # --- TAB 0: Business Overview ---
-    with tab_business:
+    # --- PAGE: Business Overview ---
+    if page == "Overview":
         st.subheader("Business Overview — Sales at a Glance")
         biz_summary = load_business_summary()
         if biz_summary:
@@ -667,9 +670,16 @@ def render_dashboard():
                     mime="text/csv",
                 )
 
-    # --- TAB 1: Forecast Chart ---
-    with tab_forecast:
+    # --- PAGE: Forecast ---
+    if page == "Forecast":
         st.subheader(f"30-Day Demand Trajectory — {selected_sku}: {sku_metadata['Description']}")
+        fc1, fc2 = st.columns(2)
+        with fc1:
+            st.slider("Forecast Horizon (Days):", min_value=7, max_value=30, step=7, key="horizon")
+        with fc2:
+            st.selectbox("Forecasting Architecture:", MODEL_OPTIONS, key="forecast_model")
+        horizon = st.session_state["horizon"]
+        selected_model_name = st.session_state["forecast_model"]
 
         if not sku_preds.empty and not historical_df.empty:
             cutoff_date = pd.Timestamp("2011-11-09")
@@ -781,9 +791,24 @@ def render_dashboard():
                 f"Please ensure Phase 2 data (`data/daily_demand_clean.parquet`) and Phase 5 prediction artifacts (`outputs/forecasting/phase5/ensemble_predictions.csv`) exist."
             )
 
-    # --- TAB 2: Inventory Optimization ---
-    with tab_inventory:
+    # --- PAGE: Inventory ---
+    if page == "Inventory":
         st.subheader(f"Inventory Replenishment & Stockout Control — {selected_sku}")
+        ic1, ic2, ic3 = st.columns(3)
+        with ic1:
+            st.slider("Replenishment Lead Time (Days):", min_value=1, max_value=30, key="lead_time_days")
+        with ic2:
+            st.selectbox(
+                "Target Service Level:",
+                [0.80, 0.85, 0.90, 0.95, 0.98, 0.99],
+                key="service_level",
+                format_func=lambda x: f"{int(x*100)}% (Z={get_z_score(x):.2f})",
+            )
+        with ic3:
+            st.slider("Review Cycle (Days):", min_value=1, max_value=30, key="review_period_days")
+        lead_time_days = st.session_state["lead_time_days"]
+        service_level = st.session_state["service_level"]
+        review_period_days = st.session_state["review_period_days"]
 
         ss_units = calculate_safety_stock(
             daily_demand_std=std_daily_forecast,
@@ -858,8 +883,8 @@ def render_dashboard():
             else:
                 st.info("ℹ️ Catalog-wide stockout risk assessment table not found at `outputs/forecasting/phase5/stockout_risk.csv`. Run Phase 5 inventory evaluation to populate risk ratings.")
 
-    # --- TAB 3: Model Benchmark ---
-    with tab_models:
+    # --- PAGE: Models ---
+    if page == "Models":
         st.subheader("Model Benchmarking & Holdout Evaluation")
 
         comparison_df = load_model_comparison_table()
@@ -894,8 +919,8 @@ def render_dashboard():
             """
         )
 
-    # --- TAB 4: Drift Monitoring ---
-    with tab_drift:
+    # --- PAGE: Drift ---
+    if page == "Drift":
         st.subheader("Evidently AI — Continuous Data & Feature Drift Monitoring")
 
         drift_summary, feature_drift_df = load_drift_monitoring_artifacts()
@@ -943,8 +968,8 @@ def render_dashboard():
         else:
             st.warning("⚠️ No drift monitoring summary found at `outputs/forecasting/phase7/drift_summary.json`.")
 
-    # --- TAB 5: Retraining Pipeline ---
-    with tab_retraining:
+    # --- PAGE: Retraining ---
+    if page == "Retraining":
         st.subheader("Apache Airflow Retraining Pipeline & Model Governance")
 
         dag_summary, promotion_decision, retraining_metrics_df = load_retraining_artifacts()
