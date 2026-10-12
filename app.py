@@ -670,6 +670,39 @@ def render_dashboard():
                     mime="text/csv",
                 )
 
+            if not biz_summary and "filtered" in locals() and not filtered.empty and "Description" in filtered.columns:
+                top_products = (
+                    filtered.groupby(["StockCode", "Description"], as_index=False)
+                    .agg(Revenue=("Revenue", "sum"), Quantity=("Quantity", "sum"), Orders=("Invoice", "nunique"))
+                    .sort_values("Revenue", ascending=False)
+                    .head(10)
+                )
+                top_products["Product"] = (
+                    top_products["StockCode"].astype(str)
+                    + " — "
+                    + top_products["Description"].astype(str).str.slice(0, 30)
+                )
+                prod_fig = px.bar(
+                    top_products,
+                    x="Product",
+                    y="Revenue",
+                    title="Top 10 Products by Revenue (Filtered)",
+                    color="Revenue",
+                    color_continuous_scale="Greens",
+                )
+                prod_fig.update_layout(height=340, margin=dict(l=40, r=40, t=30, b=40), xaxis_tickangle=-25)
+                st.plotly_chart(prod_fig, width="stretch")
+                prod_table = top_products[["Product", "Revenue", "Quantity", "Orders"]].copy()
+                prod_table["Revenue"] = prod_table["Revenue"].round(2)
+                st.dataframe(prod_table, width="stretch")
+                csv_products = top_products.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    label="⬇️ Download Top Products CSV",
+                    data=csv_products,
+                    file_name="business_top_products_filtered.csv",
+                    mime="text/csv",
+                )
+
     # --- PAGE: Forecast ---
     if page == "Forecast":
         st.subheader(f"30-Day Demand Trajectory — {selected_sku}: {sku_metadata['Description']}")
