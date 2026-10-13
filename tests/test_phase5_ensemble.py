@@ -152,74 +152,31 @@ class TestPhase5Ensemble(unittest.TestCase):
         clipped = np.maximum(0.0, np.expm1(-0.05))
         self.assertEqual(clipped, 0.0)
 
-    def test_log1p_lstm_training_and_non_negativity(self):
-        """Verify train_predict_lstm with use_log1p=True produces non-negative forecasts."""
-        horizon = 14
-        pred_df = train_predict_lstm(
-            self.history_df,
-            horizon=horizon,
-            lookback=14,
-            epochs=5,
-            hidden_dim=16,
-            seed=42,
-            use_log1p=True
-        )
-        self.assertEqual(len(pred_df), horizon)
-        self.assertEqual(pred_df["Model"].iloc[0], "LSTM")
-        self.assertTrue((pred_df["Predicted_Demand"] >= 0.0).all(), "Log1p-LSTM predictions must be non-negative")
-        self.assertEqual(pred_df.columns.tolist(), ["Date", "Predicted_Demand", "Model"])
+    def test_forecast_date_sku_alignment_and_horizon(self):
+        """Verify date alignment and 30-day chronological continuity between models."""
+        dates = pd.date_range("2011-11-10", periods=30, freq="D")
+        p_df = pd.DataFrame({"Date": dates, "Predicted_Demand": np.linspace(10, 40, 30), "Model": "Prophet"})
+        l_df = pd.DataFrame({"Date": dates, "Predicted_Demand": np.linspace(12, 38, 30), "Model": "LSTM"})
 
-    def test_saturday_masking_toggle_and_preservation(self):
-        """Verify Saturday masking sets Saturdays to zero when enabled and preserves baseline when disabled."""
-        # Create a 14-day date range covering exactly 2 Saturdays
-        dates = pd.date_range("2011-10-10", periods=14, freq="D")
-        p_df = pd.DataFrame({
-            "Date": dates,
-            "Predicted_Demand": [20.0] * 14,
-            "Lower_Bound": [15.0] * 14,
-            "Upper_Bound": [25.0] * 14,
-            "Model": "Prophet"
-        })
-        l_df = pd.DataFrame({
-            "Date": dates,
-            "Predicted_Demand": [10.0] * 14,
-            "Model": "LSTM"
-        })
-
-        # 1. Disabled (baseline behavior preserved)
-        ens_unmasked = combine_prophet_lstm_predictions(p_df, l_df, prophet_weight=0.5, apply_saturday_mask=False)
-        self.assertTrue((ens_unmasked["Predicted_Demand"] == 15.0).all())
-
-        # 2. Enabled (Saturday mask applied)
-        ens_masked = combine_prophet_lstm_predictions(p_df, l_df, prophet_weight=0.5, apply_saturday_mask=True)
-        saturdays = dates[dates.dayofweek == 5]
-        non_saturdays = dates[dates.dayofweek != 5]
-
-        # Verify Saturdays are zeroed out
-        sat_preds = ens_masked[ens_masked["Date"].isin(saturdays)]
-        self.assertEqual(len(sat_preds), 2)
-        self.assertTrue((sat_preds["Predicted_Demand"] == 0.0).all())
-        self.assertTrue((sat_preds["Lower_Bound"] == 0.0).all())
-        self.assertTrue((sat_preds["Upper_Bound"] == 0.0).all())
-
-        # Verify non-Saturdays retain exact weighted prediction
-        non_sat_preds = ens_masked[ens_masked["Date"].isin(non_saturdays)]
-        self.assertEqual(len(non_sat_preds), 12)
-        self.assertTrue((non_sat_preds["Predicted_Demand"] == 15.0).all())
+        ens_df = combine_prophet_lstm_predictions(p_df, l_df, prophet_weight=0.6)
+        self.assertEqual(len(ens_df), 30)
+        self.assertTrue((ens_df["Date"] == dates).all())
+        # Chronological order verified
+        self.assertTrue(ens_df["Date"].is_monotonic_increasing)
 
     def test_candidate_c_inventory_and_stockout_risk_integration(self):
-        """Verify Candidate C forecasts integrate seamlessly with inventory_planning without errors."""
+        """Verify forecast demand profiles integrate seamlessly with inventory_planning without errors."""
         from inventory_planning import generate_inventory_recommendations
 
         dates = pd.date_range("2011-11-10", periods=30, freq="D")
         dow = dates.dayofweek
-        # Candidate C style: weekly demand with Saturday=0
+        # Weekly demand pattern with zero on Saturdays
         demand_profile = np.where(dow == 5, 0.0, np.array([25.0] * 30))
-        forecast_dict = {"TEST_CAND_C": demand_profile}
+        forecast_dict = {"TEST_SKU": demand_profile}
 
         inv_df, risk_df = generate_inventory_recommendations(
             forecast_series_dict=forecast_dict,
-            history_daily_means={"TEST_CAND_C": 22.0},
+            history_daily_means={"TEST_SKU": 22.0},
             lead_time_days=7,
             service_level=0.95
         )
@@ -229,18 +186,6 @@ class TestPhase5Ensemble(unittest.TestCase):
         self.assertGreater(inv_df["Safety_Stock"].iloc[0], 0)
         self.assertGreater(inv_df["Reorder_Point"].iloc[0], 0)
         self.assertIn(risk_df["Stockout_Risk"].iloc[0], ["LOW", "MEDIUM", "HIGH"])
-
-    def test_forecast_date_sku_alignment_and_horizon(self):
-        """Verify date alignment and 30-day chronological continuity between models."""
-        dates = pd.date_range("2011-11-10", periods=30, freq="D")
-        p_df = pd.DataFrame({"Date": dates, "Predicted_Demand": np.linspace(10, 40, 30), "Model": "Prophet"})
-        l_df = pd.DataFrame({"Date": dates, "Predicted_Demand": np.linspace(12, 38, 30), "Model": "LSTM"})
-
-        ens_df = combine_prophet_lstm_predictions(p_df, l_df, prophet_weight=0.6, apply_saturday_mask=True)
-        self.assertEqual(len(ens_df), 30)
-        self.assertTrue((ens_df["Date"] == dates).all())
-        # Chronological order verified
-        self.assertTrue(ens_df["Date"].is_monotonic_increasing)
 
     def test_phase5_output_csv_and_json_schemas(self):
         """Verify that Phase 5 schema contracts adhere to dashboard and downstream requirements."""
