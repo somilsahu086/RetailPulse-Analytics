@@ -21,6 +21,7 @@ from typing import Dict, List, Optional, Tuple, Any
 
 import numpy as np
 import pandas as pd
+import joblib
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
@@ -286,6 +287,18 @@ def load_customer_segments(project_dir: str = PROJECT_ROOT) -> pd.DataFrame:
         return pd.read_csv(path)
     except Exception:
         return pd.DataFrame()
+
+
+@st.cache_resource(show_spinner=False)
+def load_churn_artifacts(project_dir: str = PROJECT_ROOT):
+    """Load saved churn models (read-only): scaler, kmeans, churn classifier."""
+    try:
+        scaler = joblib.load(os.path.join(project_dir, "model", "scaler.pkl"))
+        kmeans = joblib.load(os.path.join(project_dir, "model", "kmeans.pkl"))
+        churn_model = joblib.load(os.path.join(project_dir, "model", "churn_model.pkl"))
+        return scaler, kmeans, churn_model
+    except Exception:
+        return None, None, None
 
 
 # =========================================================================
@@ -776,6 +789,41 @@ def render_dashboard():
                 )
                 cl_fig.update_layout(height=320, margin=dict(l=40, r=40, t=30, b=40))
                 st.plotly_chart(cl_fig, width="stretch")
+            st.markdown("---")
+            st.markdown("##### 🔮 Predict Churn for New Customer")
+            st.caption("Uses saved `model/scaler.pkl` + `model/kmeans.pkl` to compute Cluster, then `model/churn_model.pkl` to predict.")
+            churn_scaler, churn_kmeans, churn_model = load_churn_artifacts()
+            if churn_scaler is None or churn_kmeans is None or churn_model is None:
+                st.warning("⚠️ Churn models not found in `model/` (need scaler.pkl, kmeans.pkl, churn_model.pkl).")
+            else:
+                p1, p2, p3, p4 = st.columns(4)
+                with p1:
+                    in_recency = st.number_input("Recency (days):", min_value=0, value=30, step=1)
+                with p2:
+                    in_freq = st.number_input("Frequency (orders):", min_value=1, value=3, step=1)
+                with p3:
+                    in_mon = st.number_input("Monetary (£):", min_value=0.0, value=450.0, step=10.0)
+                with p4:
+                    in_avg = st.number_input("Avg Order Value (£):", min_value=0.0, value=150.0, step=5.0)
+                if st.button("Predict Churn", width="stretch"):
+                    try:
+                        scaler_in = pd.DataFrame(
+                            [[float(in_recency), float(in_freq), float(in_mon)]],
+                            columns=["Recency", "Frequency", "Monetary"],
+                        )
+                        cluster = int(churn_kmeans.predict(churn_scaler.transform(scaler_in))[0])
+                        churn_in = pd.DataFrame(
+                            [[float(in_freq), float(in_mon), float(in_avg), cluster]],
+                            columns=["Frequency", "Monetary", "Avg_Order_Value", "Cluster"],
+                        )
+                        pred = int(churn_model.predict(churn_in)[0])
+                        proba = float(churn_model.predict_proba(churn_in)[0, 1])
+                        if pred == 1:
+                            st.error(f"🚨 Predicted: CHURN (Cluster {cluster}, {proba*100:.1f}% risk)")
+                        else:
+                            st.success(f"✅ Predicted: RETAINED (Cluster {cluster}, {proba*100:.1f}% churn risk)")
+                    except Exception as e:
+                        st.warning(f"⚠️ Prediction failed: {e}")
             search = st.text_input("Search by CustomerID:", value="")
             cust_view = cust_df.copy()
             if search.strip():
