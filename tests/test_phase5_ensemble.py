@@ -138,6 +138,136 @@ class TestPhase5Ensemble(unittest.TestCase):
         self.assertFalse(np.isnan(metrics["sMAPE"]))
         self.assertTrue(metrics["sMAPE"] >= 0.0)
 
+    def test_log1p_expm1_reversibility_and_bounds(self):
+        """Verify log1p and expm1 reversibility across scale and non-negativity."""
+        test_vals = np.array([0.0, 1.0, 2.0, 10.0, 50.0, 500.0, 5000.0])
+        transformed = np.log1p(test_vals)
+        recovered = np.expm1(transformed)
+        np.testing.assert_allclose(recovered, test_vals, rtol=1e-5, atol=1e-5)
+
+        # Boundary / edge case: zero must invert to exactly zero
+        self.assertEqual(np.expm1(np.log1p(0.0)), 0.0)
+
+        # Negative noise suppression
+        clipped = np.maximum(0.0, np.expm1(-0.05))
+        self.assertEqual(clipped, 0.0)
+
+    def test_forecast_date_sku_alignment_and_horizon(self):
+        """Verify date alignment and 30-day chronological continuity between models."""
+        dates = pd.date_range("2011-11-10", periods=30, freq="D")
+        p_df = pd.DataFrame({"Date": dates, "Predicted_Demand": np.linspace(10, 40, 30), "Model": "Prophet"})
+        l_df = pd.DataFrame({"Date": dates, "Predicted_Demand": np.linspace(12, 38, 30), "Model": "LSTM"})
+
+        ens_df = combine_prophet_lstm_predictions(p_df, l_df, prophet_weight=0.6)
+        self.assertEqual(len(ens_df), 30)
+        self.assertTrue((ens_df["Date"] == dates).all())
+        # Chronological order verified
+        self.assertTrue(ens_df["Date"].is_monotonic_increasing)
+
+    def test_candidate_c_inventory_and_stockout_risk_integration(self):
+        """Verify forecast demand profiles integrate seamlessly with inventory_planning without errors."""
+        from inventory_planning import generate_inventory_recommendations
+
+        dates = pd.date_range("2011-11-10", periods=30, freq="D")
+        dow = dates.dayofweek
+        # Weekly demand pattern with zero on Saturdays
+        demand_profile = np.where(dow == 5, 0.0, np.array([25.0] * 30))
+        forecast_dict = {"TEST_SKU": demand_profile}
+
+        inv_df, risk_df = generate_inventory_recommendations(
+            forecast_series_dict=forecast_dict,
+            history_daily_means={"TEST_SKU": 22.0},
+            lead_time_days=7,
+            service_level=0.95
+        )
+
+        self.assertEqual(len(inv_df), 1)
+        self.assertEqual(len(risk_df), 1)
+        self.assertGreater(inv_df["Safety_Stock"].iloc[0], 0)
+        self.assertGreater(inv_df["Reorder_Point"].iloc[0], 0)
+        self.assertIn(risk_df["Stockout_Risk"].iloc[0], ["LOW", "MEDIUM", "HIGH"])
+
+    def test_phase5_output_csv_and_json_schemas(self):
+        """Verify that Phase 5 schema contracts adhere to dashboard and downstream requirements."""
+        from pathlib import Path
+        import json
+
+        expected_pred_cols = ["Date", "StockCode", "Actual_Demand", "Predicted_Demand", "Model"]
+        expected_inv_cols = [
+            "StockCode", "Description", "Forecast_Horizon_Days", "Total_Forecast_Demand",
+            "Daily_Demand_Mean", "Daily_Demand_Std", "Lead_Time_Days", "Service_Level_Pct",
+            "Safety_Stock", "Reorder_Point", "Suggested_Max_Inventory"
+        ]
+        expected_risk_cols = [
+            "StockCode", "Description", "Stockout_Risk", "Surge_Factor",
+            "Coeff_of_Variation", "Safety_Stock", "Reorder_Point"
+        ]
+        expected_json_keys = [
+            "evaluation_date", "phase", "training_window", "holdout_window",
+            "product_count", "lstm_configuration", "prophet_configuration",
+            "ensemble_weighting_method", "average_prophet_weight", "best_model",
+            "metrics_summary", "leakage_safeguard"
+        ]
+
+        # Resolve artifact directory: prefer current phase5 artifacts, fallback to baseline backup
+        project_root = Path(__file__).resolve().parent.parent
+        current_dir = project_root / "outputs" / "forecasting" / "phase5"
+        backup_dir = project_root / "outputs" / "forecasting" / "phase5_baseline_backup"
+
+        required_filenames = [
+            "ensemble_predictions.csv",
+            "inventory_recommendations.csv",
+            "stockout_risk.csv",
+            "best_ensemble_summary.json",
+        ]
+
+        current_missing = [f for f in required_filenames if not (current_dir / f).is_file()]
+        backup_missing = [f for f in required_filenames if not (backup_dir / f).is_file()]
+
+        if not current_missing:
+            target_dir = current_dir
+        elif not backup_missing:
+            target_dir = backup_dir
+        else:
+            self.fail(
+                "Phase 5 output schema verification failed: neither artifact directory contains all four required files.\n"
+                f"  Current directory ({current_dir}) missing: {current_missing}\n"
+                f"  Baseline backup directory ({backup_dir}) missing: {backup_missing}"
+            )
+
+        # Verify CSV schemas
+        ens_df = pd.read_csv(target_dir / "ensemble_predictions.csv", nrows=2)
+        self.assertEqual(
+            ens_df.columns.tolist(),
+            expected_pred_cols,
+            f"Schema mismatch in ensemble_predictions.csv: expected {expected_pred_cols}, got {ens_df.columns.tolist()}"
+        )
+
+        inv_df = pd.read_csv(target_dir / "inventory_recommendations.csv", nrows=2)
+        self.assertEqual(
+            inv_df.columns.tolist(),
+            expected_inv_cols,
+            f"Schema mismatch in inventory_recommendations.csv: expected {expected_inv_cols}, got {inv_df.columns.tolist()}"
+        )
+
+        risk_df = pd.read_csv(target_dir / "stockout_risk.csv", nrows=2)
+        self.assertEqual(
+            risk_df.columns.tolist(),
+            expected_risk_cols,
+            f"Schema mismatch in stockout_risk.csv: expected {expected_risk_cols}, got {risk_df.columns.tolist()}"
+        )
+
+        # Verify summary JSON schema
+        summary_path = target_dir / "best_ensemble_summary.json"
+        with open(summary_path, "r", encoding="utf-8") as f:
+            summary_data = json.load(f)
+            for k in expected_json_keys:
+                self.assertIn(
+                    k,
+                    summary_data,
+                    f"Missing expected key '{k}' in {summary_path}"
+                )
+
 
 if __name__ == "__main__":
     unittest.main()
