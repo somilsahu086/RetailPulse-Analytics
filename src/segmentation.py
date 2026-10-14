@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import datetime as dt
+import joblib
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from preprocessing import clean_sales_data
@@ -35,6 +36,9 @@ def compute_rfm_and_clusters(df, n_clusters=4):
     
     kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
     rfm['Cluster'] = kmeans.fit_predict(rfm_scaled)
+    
+    joblib.dump(scaler,"../model/scaler.pkl")
+    joblib.dump(kmeans,"../model/kmeans.pkl")
     
     return rfm
 
