@@ -21,6 +21,7 @@ from typing import Dict, List, Optional, Tuple, Any
 
 import numpy as np
 import pandas as pd
+import joblib
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
@@ -276,6 +277,30 @@ def load_business_transactions(project_dir: str = PROJECT_ROOT) -> pd.DataFrame:
     return pd.DataFrame()
 
 
+@st.cache_data(show_spinner=False)
+def load_customer_segments(project_dir: str = PROJECT_ROOT) -> pd.DataFrame:
+    """Load precomputed RFM customer segmentation table (read-only)."""
+    path = os.path.join(project_dir, "data", "customer_segments.csv")
+    if not os.path.exists(path):
+        return pd.DataFrame()
+    try:
+        return pd.read_csv(path)
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_resource(show_spinner=False)
+def load_churn_artifacts(project_dir: str = PROJECT_ROOT):
+    """Load saved churn models (read-only): scaler, kmeans, churn classifier."""
+    try:
+        scaler = joblib.load(os.path.join(project_dir, "model", "scaler.pkl"))
+        kmeans = joblib.load(os.path.join(project_dir, "model", "kmeans.pkl"))
+        churn_model = joblib.load(os.path.join(project_dir, "model", "churn_model.pkl"))
+        return scaler, kmeans, churn_model
+    except Exception:
+        return None, None, None
+
+
 # =========================================================================
 # Main UI Dashboard Renderer
 # =========================================================================
@@ -431,7 +456,7 @@ def render_dashboard():
     # ---------------- Header navigation (website-style) ----------------
     page = st.segmented_control(
         "Navigate",
-        options=["Overview", "Forecast", "Inventory", "Models", "Drift", "Retraining"],
+        options=["Overview", "Customers", "Forecast", "Inventory", "Models", "Drift", "Retraining"],
         default="Overview",
     )
 
@@ -667,6 +692,152 @@ def render_dashboard():
                     label="⬇️ Download Filtered Monthly Revenue CSV",
                     data=csv_monthly,
                     file_name="business_monthly_revenue_filtered.csv",
+                    mime="text/csv",
+                )
+
+            if not biz_summary and "filtered" in locals() and not filtered.empty and "Description" in filtered.columns:
+                top_products = (
+                    filtered.groupby(["StockCode", "Description"], as_index=False)
+                    .agg(Revenue=("Revenue", "sum"), Quantity=("Quantity", "sum"), Orders=("Invoice", "nunique"))
+                    .sort_values("Revenue", ascending=False)
+                    .head(10)
+                )
+                top_products["Product"] = (
+                    top_products["StockCode"].astype(str)
+                    + " — "
+                    + top_products["Description"].astype(str).str.slice(0, 30)
+                )
+                prod_fig = px.bar(
+                    top_products,
+                    x="Product",
+                    y="Revenue",
+                    title="Top 10 Products by Revenue (Filtered)",
+                    color="Revenue",
+                    color_continuous_scale="Greens",
+                )
+                prod_fig.update_layout(height=340, margin=dict(l=40, r=40, t=30, b=40), xaxis_tickangle=-25)
+                st.plotly_chart(prod_fig, width="stretch")
+                prod_table = top_products[["Product", "Revenue", "Quantity", "Orders"]].copy()
+                prod_table["Revenue"] = prod_table["Revenue"].round(2)
+                st.dataframe(prod_table, width="stretch")
+                csv_products = top_products.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    label="⬇️ Download Top Products CSV",
+                    data=csv_products,
+                    file_name="business_top_products_filtered.csv",
+                    mime="text/csv",
+                )
+
+    # --- PAGE: Customers ---
+    if page == "Customers":
+        st.subheader("Customers — Segmentation at a Glance")
+        cust_df = load_customer_segments()
+        if cust_df.empty:
+            st.warning(
+                "⚠️ No customer segments found at `data/customer_segments.csv`. "
+                "Ask your teammate to run the segmentation step."
+            )
+        else:
+            total_cust = len(cust_df)
+            churn_rate = float(cust_df["Churn"].mean() * 100.0) if "Churn" in cust_df.columns else 0.0
+            avg_recency = float(cust_df["Recency"].mean()) if "Recency" in cust_df.columns else 0.0
+            n_clusters = int(cust_df["Cluster"].nunique()) if "Cluster" in cust_df.columns else 0
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-title">Total Customers</div>
+                    <div class="metric-value">{total_cust:,}</div>
+                    <div class="metric-sub">Segmented profiles</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with c2:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-title">Churn Rate</div>
+                    <div class="metric-value">{churn_rate:.1f}%</div>
+                    <div class="metric-sub">Recency &gt; 90 days</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with c3:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-title">Avg Recency</div>
+                    <div class="metric-value">{avg_recency:.0f} days</div>
+                    <div class="metric-sub">Since last purchase</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with c4:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-title">Clusters</div>
+                    <div class="metric-value">{n_clusters}</div>
+                    <div class="metric-sub">KMeans segments</div>
+                </div>
+                """, unsafe_allow_html=True)
+            if "Cluster" in cust_df.columns:
+                cluster_counts = (
+                    cust_df.groupby("Cluster").size().reset_index(name="Customers").sort_values("Cluster")
+                )
+                cl_fig = px.bar(
+                    cluster_counts,
+                    x="Cluster",
+                    y="Customers",
+                    title="Customers per Cluster",
+                    color="Customers",
+                    color_continuous_scale="Purples",
+                )
+                cl_fig.update_layout(height=320, margin=dict(l=40, r=40, t=30, b=40))
+                st.plotly_chart(cl_fig, width="stretch")
+            st.markdown("---")
+            st.markdown("##### 🔮 Predict Churn for New Customer")
+            st.caption("Uses saved `model/scaler.pkl` + `model/kmeans.pkl` to compute Cluster, then `model/churn_model.pkl` to predict.")
+            churn_scaler, churn_kmeans, churn_model = load_churn_artifacts()
+            if churn_scaler is None or churn_kmeans is None or churn_model is None:
+                st.warning("⚠️ Churn models not found in `model/` (need scaler.pkl, kmeans.pkl, churn_model.pkl).")
+            else:
+                p1, p2, p3, p4 = st.columns(4)
+                with p1:
+                    in_recency = st.number_input("Recency (days):", min_value=0, value=30, step=1)
+                with p2:
+                    in_freq = st.number_input("Frequency (orders):", min_value=1, value=3, step=1)
+                with p3:
+                    in_mon = st.number_input("Monetary (£):", min_value=0.0, value=450.0, step=10.0)
+                with p4:
+                    in_avg = st.number_input("Avg Order Value (£):", min_value=0.0, value=150.0, step=5.0)
+                if st.button("Predict Churn", width="stretch"):
+                    try:
+                        scaler_in = pd.DataFrame(
+                            [[float(in_recency), float(in_freq), float(in_mon)]],
+                            columns=["Recency", "Frequency", "Monetary"],
+                        )
+                        cluster = int(churn_kmeans.predict(churn_scaler.transform(scaler_in))[0])
+                        churn_in = pd.DataFrame(
+                            [[float(in_freq), float(in_mon), float(in_avg), cluster]],
+                            columns=["Frequency", "Monetary", "Avg_Order_Value", "Cluster"],
+                        )
+                        pred = int(churn_model.predict(churn_in)[0])
+                        proba = float(churn_model.predict_proba(churn_in)[0, 1])
+                        if pred == 1:
+                            st.error(f"🚨 Predicted: CHURN (Cluster {cluster}, {proba*100:.1f}% risk)")
+                        else:
+                            st.success(f"✅ Predicted: RETAINED (Cluster {cluster}, {proba*100:.1f}% churn risk)")
+                    except Exception as e:
+                        st.warning(f"⚠️ Prediction failed: {e}")
+            search = st.text_input("Search by CustomerID:", value="")
+            cust_view = cust_df.copy()
+            if search.strip():
+                cust_view = cust_view[cust_view["CustomerID"].astype(str).str.contains(search.strip())]
+            if cust_view.empty:
+                st.warning("⚠️ No customers match the current search.")
+            else:
+                st.caption(f"Showing {min(len(cust_view), 500):,} of {len(cust_view):,} matching customers.")
+                st.dataframe(cust_view.head(500), width="stretch")
+                csv_cust = cust_view.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    label="⬇️ Download Customers CSV",
+                    data=csv_cust,
+                    file_name="customer_segments_filtered.csv",
                     mime="text/csv",
                 )
 
