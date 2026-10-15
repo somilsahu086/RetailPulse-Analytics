@@ -14,6 +14,7 @@ Integrates:
 """
 
 import os
+import re
 import sys
 import json
 from datetime import datetime, timedelta
@@ -917,36 +918,42 @@ def render_dashboard():
 
             # Weekly Aggregation Summary
             sku_preds["Calendar_Week"] = sku_preds["Date"].dt.isocalendar().week
-            weekly_summary = sku_preds.groupby("Calendar_Week").agg(
-                Start_Date=("Date", "min"),
-                End_Date=("Date", "max"),
-                Days_Count=("Date", "count"),
-                Weekly_Predicted_Demand=("Predicted_Demand", "sum"),
-                Weekly_Actual_Demand=("Actual_Demand", "sum") if has_actuals else ("Predicted_Demand", "count")
-            ).reset_index()
+            _weekly_agg = {
+                "Start_Date": ("Date", "min"),
+                "End_Date": ("Date", "max"),
+                "Days_Count": ("Date", "count"),
+                "Weekly_Predicted_Demand": ("Predicted_Demand", "sum"),
+            }
+            if has_actuals and "Actual_Demand" in sku_preds.columns:
+                _weekly_agg["Weekly_Actual_Demand"] = ("Actual_Demand", "sum")
+            weekly_summary = sku_preds.groupby("Calendar_Week").agg(**_weekly_agg).reset_index()
 
             col_w1, col_w2 = st.columns([1, 1])
             with col_w1:
                 st.markdown("##### 📅 Weekly Aggregated Operational Demand")
                 display_cols = ["Calendar_Week", "Start_Date", "End_Date", "Weekly_Predicted_Demand"]
-                if has_actuals:
+                if has_actuals and "Weekly_Actual_Demand" in weekly_summary.columns:
                     display_cols.append("Weekly_Actual_Demand")
+                _fmt = {
+                    "Weekly_Predicted_Demand": "{:,.1f}",
+                    "Start_Date": lambda d: d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else d,
+                    "End_Date": lambda d: d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else d,
+                }
+                if "Weekly_Actual_Demand" in display_cols:
+                    _fmt["Weekly_Actual_Demand"] = "{:,.1f}"
                 st.dataframe(
-                    weekly_summary[display_cols].style.format({
-                        "Weekly_Predicted_Demand": "{:,.1f}",
-                        "Weekly_Actual_Demand": "{:,.1f}" if has_actuals else "{}",
-                        "Start_Date": lambda d: d.strftime("%Y-%m-%d"),
-                        "End_Date": lambda d: d.strftime("%Y-%m-%d")
-                    }),
+                    weekly_summary[display_cols].style.format(_fmt),
                     width="stretch"
                 )
             with col_w2:
                 st.markdown("##### 📥 Daily Forecast Export")
                 csv_export = sku_preds[["Date", "StockCode", "Predicted_Demand"] + (["Actual_Demand"] if has_actuals else [])].to_csv(index=False).encode('utf-8')
+                _safe_sku = re.sub(r"[^A-Za-z0-9_-]+", "_", str(selected_sku))
+                _safe_model = re.sub(r"[^A-Za-z0-9_-]+", "_", str(selected_model_name[:8]))
                 st.download_button(
                     label="⬇️ Download Daily Predictions CSV",
                     data=csv_export,
-                    file_name=f"demand_forecast_{selected_sku}_{selected_model_name[:8]}.csv",
+                    file_name=f"demand_forecast_{_safe_sku}_{_safe_model}.csv",
                     mime="text/csv",
                     width="stretch"
                 )
@@ -977,26 +984,11 @@ def render_dashboard():
             )
         with ic3:
             st.slider("Review Cycle (Days):", min_value=1, max_value=30, key="review_period_days")
+        # Uses single inventory calc from above (ss_units/rop_units/order_up_to_level).
+        # Widget keys update session_state; values refresh on next rerun via top calc.
         lead_time_days = st.session_state["lead_time_days"]
         service_level = st.session_state["service_level"]
         review_period_days = st.session_state["review_period_days"]
-
-        ss_units = calculate_safety_stock(
-            daily_demand_std=std_daily_forecast,
-            lead_time_days=lead_time_days,
-            service_level=service_level
-        )
-        rop_units = calculate_reorder_point(
-            daily_demand_mean=mean_daily_forecast,
-            safety_stock=ss_units,
-            lead_time_days=lead_time_days
-        )
-        order_up_to = calculate_order_up_to_level(
-            daily_demand_mean=mean_daily_forecast,
-            safety_stock=ss_units,
-            lead_time_days=lead_time_days,
-            review_period_days=review_period_days
-        )
 
         inv_c1, inv_c2, inv_c3, inv_c4 = st.columns(4)
         with inv_c1:
