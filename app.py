@@ -14,6 +14,7 @@ Integrates:
 """
 
 import os
+import re
 import sys
 import json
 from datetime import datetime, timedelta
@@ -379,6 +380,9 @@ def render_dashboard():
             text-align: center;
             box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
+        .metric-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
         .metric-title {
             font-size: 0.8rem;
             color: #6B7280;
@@ -417,6 +421,13 @@ def render_dashboard():
             border-radius: 4px;
             font-weight: 600;
         }
+        /* Big sidebar navigation radio buttons */
+        section[data-testid="stSidebar"] .stRadio label {
+            font-size: 1.15rem;
+            font-weight: 600;
+        }
+        section[data-testid="stSidebar"] .stRadio > div[role="radiogroup"] {
+            gap: 0.7rem;
         div[data-testid="stMetricValue"] {
             overflow: visible !important;
             text-overflow: clip !important;
@@ -432,8 +443,19 @@ def render_dashboard():
     """, unsafe_allow_html=True)
 
     # ---------------- Sidebar Controls ----------------
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📑 Navigate")
+    page = st.sidebar.radio(
+        "Go to",
+        options=["Overview", "Customers", "Forecast", "Inventory", "Models", "Drift", "Retraining"],
+        index=0,
+    )
+
+    st.sidebar.markdown("---")
     st.sidebar.title("RetailPulse Control")
     st.sidebar.caption("Demand forecasting & inventory")
+
+    st.sidebar.markdown("---")
 
     catalog_df = load_catalog()
     if catalog_df.empty:
@@ -473,13 +495,14 @@ def render_dashboard():
         st.rerun()
 
     # ---------------- Header ----------------
-    st.markdown('<div class="main-header">RetailPulse Analytics</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">📈 RetailPulse Analytics</div>', unsafe_allow_html=True)
     st.markdown(
         '<div class="sub-header">'
         'Demand forecasting, inventory planning, and model monitoring in one place.'
         '</div>',
         unsafe_allow_html=True
     )
+    st.divider()
 
     # ---------------- Shared page state (widgets live on their pages) ----------------
     MODEL_OPTIONS = [
@@ -504,13 +527,6 @@ def render_dashboard():
     lead_time_days = st.session_state["lead_time_days"]
     service_level = st.session_state["service_level"]
     review_period_days = st.session_state["review_period_days"]
-
-    # ---------------- Header navigation (website-style) ----------------
-    page = st.segmented_control(
-        "Navigate",
-        options=["Overview", "Customers", "Forecast", "Inventory", "Models", "Drift", "Retraining"],
-        default="Overview",
-    )
 
     # ---------------- Predictions & Metrics ----------------
     predictions_store = load_all_predictions()
@@ -541,32 +557,32 @@ def render_dashboard():
     kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
     with kpi1:
         st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">Selected Product</div>
+        <div class="metric-card" style="border-top: 4px solid #1E3A8A;">
+            <div class="metric-title">📦 Selected Product</div>
             <div class="metric-value">{selected_sku}</div>
             <div class="metric-sub">{str(sku_metadata['Description'])[:18]}</div>
         </div>
         """, unsafe_allow_html=True)
     with kpi2:
         st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">Forecast Horizon</div>
+        <div class="metric-card" style="border-top: 4px solid #2563EB;">
+            <div class="metric-title">📅 Forecast Horizon</div>
             <div class="metric-value">{horizon} Days</div>
             <div class="metric-sub">Thru {latest_forecast_date}</div>
         </div>
         """, unsafe_allow_html=True)
     with kpi3:
         st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">Total Demand</div>
+        <div class="metric-card" style="border-top: 4px solid #10B981;">
+            <div class="metric-title">📊 Total Demand</div>
             <div class="metric-value">{total_forecast:,.0f}</div>
             <div class="metric-sub">Projected Units</div>
         </div>
         """, unsafe_allow_html=True)
     with kpi4:
         st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">Avg Daily Demand</div>
+        <div class="metric-card" style="border-top: 4px solid #8B5CF6;">
+            <div class="metric-title">📈 Avg Daily Demand</div>
             <div class="metric-value">{mean_daily_forecast:,.1f}</div>
             <div class="metric-sub">Units / Day (±{std_daily_forecast:.1f})</div>
         </div>
@@ -581,8 +597,8 @@ def render_dashboard():
         risk_class = risk_info["stockout_risk"]
         badge_style = "badge-low" if risk_class == "LOW" else ("badge-med" if risk_class == "MEDIUM" else "badge-high")
         st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">Stockout Risk</div>
+        <div class="metric-card" style="border-top: 4px solid #F59E0B;">
+            <div class="metric-title">⚠️ Stockout Risk</div>
             <div class="metric-value"><span class="{badge_style}">{risk_class}</span></div>
             <div class="metric-sub">Surge Factor: {risk_info['surge_factor']}x</div>
         </div>
@@ -613,6 +629,9 @@ def render_dashboard():
 
     # --- PAGE: Business Overview ---
     if page == "Overview":
+        st.subheader("📊 Business Overview — Sales at a Glance")
+        st.caption("Revenue, orders and top products from cleaned sales.")
+        st.divider()
         st.subheader("Business Overview \u2014 Sales at a Glance")
         biz_summary = load_business_summary()
 
@@ -986,6 +1005,10 @@ def render_dashboard():
             b1, b2, b3, b4 = st.columns(4)
             with b1:
                 st.markdown(f"""
+                <div class="metric-card" style="border-top: 4px solid #2563EB;">
+                    <div class="metric-title">💰 Total Revenue</div>
+                    <div class="metric-value">£{total_revenue:,.0f}</div>
+                    <div class="metric-sub">Cleaned sales data</div>
                 <div class="metric-card">
                     <div class="metric-title">Total Revenue</div>
                     <div class="metric-value">\u00a3{total_revenue:,.0f}</div>
@@ -994,22 +1017,45 @@ def render_dashboard():
                 """, unsafe_allow_html=True)
             with b2:
                 st.markdown(f"""
-                <div class="metric-card">
-                    <div class="metric-title">Total Orders</div>
+                <div class="metric-card" style="border-top: 4px solid #10B981;">
+                    <div class="metric-title">🧾 Total Orders</div>
                     <div class="metric-value">{total_orders:,}</div>
                     <div class="metric-sub">{orders_sub}</div>
                 </div>
                 """, unsafe_allow_html=True)
             with b3:
                 st.markdown(f"""
-                <div class="metric-card">
-                    <div class="metric-title">Total Customers</div>
+                <div class="metric-card" style="border-top: 4px solid #8B5CF6;">
+                    <div class="metric-title">👥 Total Customers</div>
                     <div class="metric-value">{total_customers:,}</div>
                     <div class="metric-sub">{cust_sub}</div>
                 </div>
                 """, unsafe_allow_html=True)
             with b4:
                 st.markdown(f"""
+                <div class="metric-card" style="border-top: 4px solid #F59E0B;">
+                    <div class="metric-title">🧮 Avg Order Value</div>
+                    <div class="metric-value">£{avg_order_value:,.2f}</div>
+                    <div class="metric-sub">Revenue / Orders</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            rev_fig = px.line(
+                monthly_rev,
+                x="Month",
+                y="Revenue",
+                title="Monthly Revenue Trend",
+                markers=True,
+            )
+            rev_fig.update_layout(height=320, margin=dict(l=40, r=40, t=30, b=40), template="plotly_white")
+            st.plotly_chart(rev_fig, width="stretch")
+
+            if not biz_summary and "filtered" in locals() and not filtered.empty and "Country" in filtered.columns:
+                top_countries = (
+                    filtered.groupby("Country", as_index=False)["Revenue"]
+                    .sum()
+                    .sort_values("Revenue", ascending=False)
+                    .head(10)
                 <div class="metric-card">
                     <div class="metric-title">Avg Order Value</div>
                     <div class="metric-value">\u00a3{avg_order_value:,.2f}</div>
@@ -1065,7 +1111,7 @@ def render_dashboard():
                     color="Revenue",
                     color_continuous_scale="Blues",
                 )
-                country_fig.update_layout(height=320, margin=dict(l=40, r=40, t=30, b=40), xaxis_tickangle=-20)
+                country_fig.update_layout(height=320, margin=dict(l=40, r=40, t=30, b=40), xaxis_tickangle=-20, template="plotly_white")
                 st.plotly_chart(country_fig, width="stretch")
                 csv_countries = top_countries_df.to_csv(index=False).encode("utf-8")
                 st.download_button(
@@ -1087,7 +1133,7 @@ def render_dashboard():
                     color="Revenue",
                     color_continuous_scale="Greens",
                 )
-                prod_fig.update_layout(height=340, margin=dict(l=40, r=40, t=30, b=40), xaxis_tickangle=-25)
+                prod_fig.update_layout(height=340, margin=dict(l=40, r=40, t=30, b=40), xaxis_tickangle=-25, template="plotly_white")
                 st.plotly_chart(prod_fig, width="stretch")
                 prod_table_cols = [c for c in ["Product", "StockCode", "Description", "Revenue", "Quantity", "Orders"] if c in top_products_df.columns]
                 prod_table = top_products_df[prod_table_cols].copy()
@@ -1104,7 +1150,9 @@ def render_dashboard():
                 st.info("\u2139\ufe0f Top products revenue breakdown not available in the current summary dataset.")
     # --- PAGE: Customers ---
     if page == "Customers":
-        st.subheader("Customers — Segmentation at a Glance")
+        st.subheader("👥 Customers — Segmentation at a Glance")
+        st.caption("Clusters, churn rate and per-customer search.")
+        st.divider()
         cust_df = load_customer_segments()
         if cust_df.empty:
             st.warning(
@@ -1119,32 +1167,32 @@ def render_dashboard():
             c1, c2, c3, c4 = st.columns(4)
             with c1:
                 st.markdown(f"""
-                <div class="metric-card">
-                    <div class="metric-title">Total Customers</div>
+                <div class="metric-card" style="border-top: 4px solid #8B5CF6;">
+                    <div class="metric-title">👥 Total Customers</div>
                     <div class="metric-value">{total_cust:,}</div>
                     <div class="metric-sub">Segmented profiles</div>
                 </div>
                 """, unsafe_allow_html=True)
             with c2:
                 st.markdown(f"""
-                <div class="metric-card">
-                    <div class="metric-title">Churn Rate</div>
+                <div class="metric-card" style="border-top: 4px solid #EF4444;">
+                    <div class="metric-title">🚨 Churn Rate</div>
                     <div class="metric-value">{churn_rate:.1f}%</div>
                     <div class="metric-sub">Recency &gt; 90 days</div>
                 </div>
                 """, unsafe_allow_html=True)
             with c3:
                 st.markdown(f"""
-                <div class="metric-card">
-                    <div class="metric-title">Avg Recency</div>
+                <div class="metric-card" style="border-top: 4px solid #2563EB;">
+                    <div class="metric-title">🕒 Avg Recency</div>
                     <div class="metric-value">{avg_recency:.0f} days</div>
                     <div class="metric-sub">Since last purchase</div>
                 </div>
                 """, unsafe_allow_html=True)
             with c4:
                 st.markdown(f"""
-                <div class="metric-card">
-                    <div class="metric-title">Clusters</div>
+                <div class="metric-card" style="border-top: 4px solid #10B981;">
+                    <div class="metric-title">🧩 Clusters</div>
                     <div class="metric-value">{n_clusters}</div>
                     <div class="metric-sub">KMeans segments</div>
                 </div>
@@ -1161,7 +1209,7 @@ def render_dashboard():
                     color="Customers",
                     color_continuous_scale="Purples",
                 )
-                cl_fig.update_layout(height=320, margin=dict(l=40, r=40, t=30, b=40))
+                cl_fig.update_layout(height=320, margin=dict(l=40, r=40, t=30, b=40), template="plotly_white")
                 st.plotly_chart(cl_fig, width="stretch")
             st.markdown("---")
             st.markdown("##### 🔮 Predict Churn for New Customer")
@@ -1179,7 +1227,7 @@ def render_dashboard():
                     in_mon = st.number_input("Monetary (£):", min_value=0.0, value=450.0, step=10.0)
                 with p4:
                     in_avg = st.number_input("Avg Order Value (£):", min_value=0.0, value=150.0, step=5.0)
-                if st.button("Predict Churn", width="stretch"):
+                if st.button("Predict Churn", width="stretch", type="primary"):
                     try:
                         scaler_in = pd.DataFrame(
                             [[float(in_recency), float(in_freq), float(in_mon)]],
@@ -1217,7 +1265,9 @@ def render_dashboard():
 
     # --- PAGE: Forecast ---
     if page == "Forecast":
-        st.subheader(f"30-Day Demand Trajectory — {selected_sku}: {sku_metadata['Description']}")
+        st.subheader(f"🔮 30-Day Demand Trajectory — {selected_sku}: {sku_metadata['Description']}")
+        st.caption("Holdout forecast with 80% confidence interval.")
+        st.divider()
         fc1, fc2 = st.columns(2)
         with fc1:
             st.slider("Forecast Horizon (Days):", min_value=7, max_value=30, step=7, key="horizon")
@@ -1283,6 +1333,7 @@ def render_dashboard():
                 height=420,
                 hovermode="x unified",
                 margin=dict(l=40, r=40, t=30, b=40),
+                template="plotly_white",
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                 xaxis=dict(title="Timeline (Date)", showgrid=True, gridcolor="#F3F4F6"),
                 yaxis=dict(title="Sales Demand (Units)", showgrid=True, gridcolor="#F3F4F6", rangemode="nonnegative")
@@ -1291,36 +1342,42 @@ def render_dashboard():
 
             # Weekly Aggregation Summary
             sku_preds["Calendar_Week"] = sku_preds["Date"].dt.isocalendar().week
-            weekly_summary = sku_preds.groupby("Calendar_Week").agg(
-                Start_Date=("Date", "min"),
-                End_Date=("Date", "max"),
-                Days_Count=("Date", "count"),
-                Weekly_Predicted_Demand=("Predicted_Demand", "sum"),
-                Weekly_Actual_Demand=("Actual_Demand", "sum") if has_actuals else ("Predicted_Demand", "count")
-            ).reset_index()
+            _weekly_agg = {
+                "Start_Date": ("Date", "min"),
+                "End_Date": ("Date", "max"),
+                "Days_Count": ("Date", "count"),
+                "Weekly_Predicted_Demand": ("Predicted_Demand", "sum"),
+            }
+            if has_actuals and "Actual_Demand" in sku_preds.columns:
+                _weekly_agg["Weekly_Actual_Demand"] = ("Actual_Demand", "sum")
+            weekly_summary = sku_preds.groupby("Calendar_Week").agg(**_weekly_agg).reset_index()
 
             col_w1, col_w2 = st.columns([1, 1])
             with col_w1:
                 st.markdown("##### 📅 Weekly Aggregated Operational Demand")
                 display_cols = ["Calendar_Week", "Start_Date", "End_Date", "Weekly_Predicted_Demand"]
-                if has_actuals:
+                if has_actuals and "Weekly_Actual_Demand" in weekly_summary.columns:
                     display_cols.append("Weekly_Actual_Demand")
+                _fmt = {
+                    "Weekly_Predicted_Demand": "{:,.1f}",
+                    "Start_Date": lambda d: d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else d,
+                    "End_Date": lambda d: d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else d,
+                }
+                if "Weekly_Actual_Demand" in display_cols:
+                    _fmt["Weekly_Actual_Demand"] = "{:,.1f}"
                 st.dataframe(
-                    weekly_summary[display_cols].style.format({
-                        "Weekly_Predicted_Demand": "{:,.1f}",
-                        "Weekly_Actual_Demand": "{:,.1f}" if has_actuals else "{}",
-                        "Start_Date": lambda d: d.strftime("%Y-%m-%d"),
-                        "End_Date": lambda d: d.strftime("%Y-%m-%d")
-                    }),
+                    weekly_summary[display_cols].style.format(_fmt),
                     width="stretch"
                 )
             with col_w2:
                 st.markdown("##### 📥 Daily Forecast Export")
                 csv_export = sku_preds[["Date", "StockCode", "Predicted_Demand"] + (["Actual_Demand"] if has_actuals else [])].to_csv(index=False).encode('utf-8')
+                _safe_sku = re.sub(r"[^A-Za-z0-9_-]+", "_", str(selected_sku))
+                _safe_model = re.sub(r"[^A-Za-z0-9_-]+", "_", str(selected_model_name[:8]))
                 st.download_button(
                     label="⬇️ Download Daily Predictions CSV",
                     data=csv_export,
-                    file_name=f"demand_forecast_{selected_sku}_{selected_model_name[:8]}.csv",
+                    file_name=f"demand_forecast_{_safe_sku}_{_safe_model}.csv",
                     mime="text/csv",
                     width="stretch"
                 )
@@ -1338,7 +1395,9 @@ def render_dashboard():
 
     # --- PAGE: Inventory ---
     if page == "Inventory":
-        st.subheader(f"Inventory Replenishment & Stockout Control — {selected_sku}")
+        st.subheader(f"📦 Inventory Replenishment & Stockout Control — {selected_sku}")
+        st.caption("Safety stock, reorder point and order-up-to level.")
+        st.divider()
         ic1, ic2, ic3 = st.columns(3)
         with ic1:
             st.slider("Replenishment Lead Time (Days):", min_value=1, max_value=30, key="lead_time_days")
@@ -1351,26 +1410,11 @@ def render_dashboard():
             )
         with ic3:
             st.slider("Review Cycle (Days):", min_value=1, max_value=30, key="review_period_days")
+        # Uses single inventory calc from above (ss_units/rop_units/order_up_to_level).
+        # Widget keys update session_state; values refresh on next rerun via top calc.
         lead_time_days = st.session_state["lead_time_days"]
         service_level = st.session_state["service_level"]
         review_period_days = st.session_state["review_period_days"]
-
-        ss_units = calculate_safety_stock(
-            daily_demand_std=std_daily_forecast,
-            lead_time_days=lead_time_days,
-            service_level=service_level
-        )
-        rop_units = calculate_reorder_point(
-            daily_demand_mean=mean_daily_forecast,
-            safety_stock=ss_units,
-            lead_time_days=lead_time_days
-        )
-        order_up_to = calculate_order_up_to_level(
-            daily_demand_mean=mean_daily_forecast,
-            safety_stock=ss_units,
-            lead_time_days=lead_time_days,
-            review_period_days=review_period_days
-        )
 
         inv_c1, inv_c2, inv_c3, inv_c4 = st.columns(4)
         with inv_c1:
@@ -1423,13 +1467,16 @@ def render_dashboard():
                     color="Risk_Level",
                     color_discrete_map={"LOW": "#10B981", "MEDIUM": "#FBBF24", "HIGH": "#EF4444"}
                 )
-                pie_fig.update_layout(height=320, margin=dict(l=20, r=20, t=30, b=20))
+                pie_fig.update_layout(height=320, margin=dict(l=20, r=20, t=30, b=20), template="plotly_white")
                 st.plotly_chart(pie_fig, width="stretch")
             else:
                 st.info("ℹ️ Catalog-wide stockout risk assessment table not found at `outputs/forecasting/phase5/stockout_risk.csv`. Run Phase 5 inventory evaluation to populate risk ratings.")
 
     # --- PAGE: Models ---
     if page == "Models":
+        st.subheader("🏆 Model Benchmarking & Holdout Evaluation")
+        st.caption("Compare Prophet, LSTM, LightGBM and baselines on holdout MAE.")
+        st.divider()
         st.subheader("Model Benchmarking & Portfolio-Level Holdout Evaluation")
 
         weekly_df, weekly_meta, val_summary_df = load_weekly_portfolio_validation_metrics()
@@ -1541,7 +1588,7 @@ def render_dashboard():
                 color="Holdout MAE",
                 color_continuous_scale="Blues_r"
             )
-            bar_fig.update_layout(height=320, margin=dict(l=40, r=40, t=30, b=40), xaxis_tickangle=-15)
+            bar_fig.update_layout(height=320, margin=dict(l=40, r=40, t=30, b=40), xaxis_tickangle=-15, template="plotly_white")
             st.plotly_chart(bar_fig, width="stretch")
         else:
             st.warning("\u26a0\ufe0f Model comparison benchmark table not found at `outputs/forecasting/phase6/tuned_model_comparison.csv`.")
@@ -1562,7 +1609,9 @@ def render_dashboard():
         )
     # --- PAGE: Drift ---
     if page == "Drift":
-        st.subheader("Evidently AI — Continuous Data & Feature Drift Monitoring")
+        st.subheader("🛰️ Evidently AI — Continuous Data & Feature Drift Monitoring")
+        st.caption("Dataset stability and per-feature KS tests.")
+        st.divider()
 
         drift_summary, feature_drift_df = load_drift_monitoring_artifacts()
 
@@ -1611,7 +1660,9 @@ def render_dashboard():
 
     # --- PAGE: Retraining ---
     if page == "Retraining":
-        st.subheader("Apache Airflow Retraining Pipeline & Model Governance")
+        st.subheader("🔁 Apache Airflow Retraining Pipeline & Model Governance")
+        st.caption("Weekly DAG status and promotion decision.")
+        st.divider()
 
         dag_summary, promotion_decision, retraining_metrics_df = load_retraining_artifacts()
 
@@ -1651,16 +1702,17 @@ def render_dashboard():
         })
 
     # --- Executive Summary Card ---
-    st.markdown("---")
+    st.divider()
     st.markdown("### 📋 Executive Business Summary")
-    st.markdown(
-        f"""
-        - **Demand Projection:** SKU `{selected_sku}` ({sku_metadata['Description']}) is projected to consume **{total_forecast:,.0f} units** over the next **{horizon} days** (averaging **{mean_daily_forecast:,.1f} units/day**).
-        - **Inventory Posture:** Calculated Safety Stock buffer is **{ss_units:,} units** with a replenishment Reorder Point at **{rop_units:,} units** under a **{lead_time_days}-day** lead time.
-        - **Stockout Urgency:** Rated **{risk_class}** (Surge factor: {risk_info['surge_factor']}x).
-        - **Model Governance:** Operating under the **Prophet + PyTorch LSTM Hybrid Ensemble**, continuously monitored via Evidently AI and automated by Apache Airflow.
-        """
-    )
+    with st.container(border=True):
+        st.markdown(
+            f"""
+            - **Demand Projection:** SKU `{selected_sku}` ({sku_metadata['Description']}) is projected to consume **{total_forecast:,.0f} units** over the next **{horizon} days** (averaging **{mean_daily_forecast:,.1f} units/day**).
+            - **Inventory Posture:** Calculated Safety Stock buffer is **{ss_units:,} units** with a replenishment Reorder Point at **{rop_units:,} units** under a **{lead_time_days}-day** lead time.
+            - **Stockout Urgency:** Rated **{risk_class}** (Surge factor: {risk_info['surge_factor']}x).
+            - **Model Governance:** Operating under the **Prophet + PyTorch LSTM Hybrid Ensemble**, continuously monitored via Evidently AI and automated by Apache Airflow.
+            """
+        )
 
 
 # Only execute UI rendering when running under Streamlit runtime
