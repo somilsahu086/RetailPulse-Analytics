@@ -182,40 +182,6 @@ def load_model_comparison_table(project_dir: str = PROJECT_ROOT) -> pd.DataFrame
 
 
 @st.cache_data(show_spinner=False)
-def load_weekly_portfolio_validation_metrics(project_dir: str = PROJECT_ROOT) -> Tuple[pd.DataFrame, Dict[str, Any], pd.DataFrame]:
-    """Load verified weekly portfolio-level MAPE evaluation artifacts and metadata."""
-    exp_dir = os.path.join(project_dir, "outputs", "forecasting", "prophet_lstm_validation_comparison")
-    weekly_csv = os.path.join(exp_dir, "weekly_portfolio_mape.csv")
-    meta_json = os.path.join(exp_dir, "experiment_metadata.json")
-    val_summary_csv = os.path.join(exp_dir, "validation_summary.csv")
-
-    weekly_df = pd.DataFrame()
-    metadata: Dict[str, Any] = {}
-    summary_df = pd.DataFrame()
-
-    if os.path.exists(weekly_csv):
-        try:
-            weekly_df = pd.read_csv(weekly_csv)
-        except Exception:
-            pass
-
-    if os.path.exists(meta_json):
-        try:
-            with open(meta_json, "r", encoding="utf-8") as f:
-                metadata = json.load(f)
-        except Exception:
-            pass
-
-    if os.path.exists(val_summary_csv):
-        try:
-            summary_df = pd.read_csv(val_summary_csv)
-        except Exception:
-            pass
-
-    return weekly_df, metadata, summary_df
-
-
-@st.cache_data(show_spinner=False)
 def load_drift_monitoring_artifacts(project_dir: str = PROJECT_ROOT) -> Tuple[Dict[str, Any], pd.DataFrame]:
     """Load Phase 7 Evidently AI drift summary and feature table."""
     base_dir = os.path.join(project_dir, "outputs", "forecasting", "phase7")
@@ -262,15 +228,9 @@ def load_retraining_artifacts(project_dir: str = PROJECT_ROOT) -> Tuple[Dict[str
 # =========================================================================
 # Business Overview Data Loading Helpers (Optimized for instant rendering)
 # =========================================================================
+@st.cache_data(show_spinner=False)
 def load_business_summary(project_dir: str = PROJECT_ROOT) -> Dict[str, Any]:
     """Load pre-aggregated sales overview metrics for instantaneous tab rendering."""
-    summary_path = os.path.join(project_dir, "data", "business_overview_summary.json")
-    mtime = os.path.getmtime(summary_path) if os.path.exists(summary_path) else 0.0
-    return _load_business_summary_cached(project_dir, mtime)
-
-
-@st.cache_data(show_spinner=False)
-def _load_business_summary_cached(project_dir: str, mtime: float) -> Dict[str, Any]:
     summary_path = os.path.join(project_dir, "data", "business_overview_summary.json")
     if os.path.exists(summary_path):
         try:
@@ -288,11 +248,10 @@ def load_business_transactions(project_dir: str = PROJECT_ROOT) -> pd.DataFrame:
     parquet_path = os.path.join(project_dir, "data", "cleaned_data.parquet")
     if os.path.exists(parquet_path):
         try:
-            import pyarrow.parquet as pq
-            parquet_schema = pq.read_schema(parquet_path)
-            desired_cols = ["Invoice", "StockCode", "Description", "Quantity", "InvoiceDate", "Price", "Customer ID", "Country", "Revenue"]
-            avail_cols = [c for c in desired_cols if c in parquet_schema.names]
-            df = pd.read_parquet(parquet_path, columns=avail_cols)
+            df = pd.read_parquet(
+                parquet_path,
+                columns=["Invoice", "StockCode", "Description", "Quantity", "InvoiceDate", "Price", "Customer ID", "Country", "Revenue"]
+            )
             df["InvoiceDate"] = pd.to_datetime(df["InvoiceDate"], errors="coerce")
             return df.dropna(subset=["InvoiceDate"])
         except Exception:
@@ -428,16 +387,6 @@ def render_dashboard():
         }
         section[data-testid="stSidebar"] .stRadio > div[role="radiogroup"] {
             gap: 0.7rem;
-        div[data-testid="stMetricValue"] {
-            overflow: visible !important;
-            text-overflow: clip !important;
-            white-space: normal !important;
-        }
-        div[data-testid="stMetricValue"] > div {
-            font-size: 1.45rem !important;
-            white-space: normal !important;
-            word-break: normal !important;
-            line-height: 1.25 !important;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -632,282 +581,17 @@ def render_dashboard():
         st.subheader("📊 Business Overview — Sales at a Glance")
         st.caption("Revenue, orders and top products from cleaned sales.")
         st.divider()
-        st.subheader("Business Overview \u2014 Sales at a Glance")
         biz_summary = load_business_summary()
-
-        # Extract pre-aggregated fields or prepare fallback
         if biz_summary:
-            country_list = biz_summary.get("countries", [])
-            top_countries_data = biz_summary.get("top_countries", [])
-            top_products_data = biz_summary.get("top_products", [])
-            country_metrics = biz_summary.get("country_metrics", {})
-            country_monthly = biz_summary.get("country_monthly_revenue", [])
-            country_top_prods = biz_summary.get("country_top_products", [])
-
-            # Date bounds from summary or monthly series
-            min_date = pd.to_datetime(biz_summary.get("min_date", "2009-12-01")).date()
-            max_date = pd.to_datetime(biz_summary.get("max_date", "2011-12-09")).date()
-
-            # Render filters on the main summary path
-            f1, f2 = st.columns(2)
-            with f1:
-                if country_list:
-                    selected_countries = st.multiselect(
-                        "Filter by Country:",
-                        options=country_list,
-                        default=country_list,
-                    )
-                else:
-                    selected_countries = []
-                    st.caption("Country breakdown pre-aggregated at catalog level.")
-            with f2:
-                date_range = st.date_input(
-                    "Filter by Date Range:",
-                    value=(min_date, max_date),
-                    min_value=min_date,
-                    max_value=max_date,
-                )
-
-            # Determine whether all countries are selected or a strict subset
-            is_all_countries = set(selected_countries) == set(country_list)
-            is_full_span = bool(
-                isinstance(date_range, (list, tuple))
-                and len(date_range) == 2
-                and (date_range[0] <= min_date)
-                and (date_range[1] >= max_date)
-            )
-
-            if not selected_countries:
-                total_revenue = None
-                total_orders = 0
-                total_customers = 0
-                avg_order_value = 0.0
-                monthly_rev = pd.DataFrame(columns=["Month", "Revenue"])
-                top_countries_df = pd.DataFrame()
-                top_products_df = pd.DataFrame()
-                country_sub = ""
-                orders_sub = ""
-                cust_sub = ""
-                aov_sub = ""
-            elif is_full_span and is_all_countries:
-                # 1. Full catalog span & all countries: instant precomputed global totals (<5ms)
-                total_revenue = float(biz_summary.get("total_revenue", 0.0))
-                total_orders = int(biz_summary.get("total_orders", 0))
-                total_customers = int(biz_summary.get("total_customers", 0))
-                avg_order_value = float(biz_summary.get("avg_order_value", 0.0))
-                monthly_rev = pd.DataFrame(biz_summary.get("monthly_revenue", []))
-                if not monthly_rev.empty and "Month" in monthly_rev.columns:
-                    monthly_rev["Month"] = pd.to_datetime(monthly_rev["Month"])
-                top_countries_df = pd.DataFrame(top_countries_data)
-                top_products_df = pd.DataFrame(top_products_data)
-                country_sub = "All countries"
-                orders_sub = "Unique invoices"
-                cust_sub = "Unique customer IDs"
-                aov_sub = "Revenue / Orders"
-            elif is_full_span and not is_all_countries:
-                # 2. Full catalog span & subset of countries: use pre-aggregated country metrics (<5ms)
-                has_country_summary = bool(country_metrics and any(c in country_metrics for c in selected_countries))
-                if has_country_summary:
-                    total_revenue = float(sum(country_metrics.get(c, {}).get("revenue", 0.0) for c in selected_countries))
-                    total_orders = int(sum(country_metrics.get(c, {}).get("orders", 0) for c in selected_countries))
-                    total_customers = int(sum(country_metrics.get(c, {}).get("customers", 0) for c in selected_countries))
-                    avg_order_value = float(total_revenue / total_orders) if total_orders > 0 else 0.0
-
-                    if country_monthly:
-                        cm_df = pd.DataFrame(country_monthly)
-                        cm_df = cm_df[cm_df["Country"].isin(selected_countries)]
-                        if not cm_df.empty:
-                            monthly_rev = cm_df.groupby("Month", as_index=False)["Revenue"].sum()
-                            monthly_rev["Month"] = pd.to_datetime(monthly_rev["Month"])
-                        else:
-                            monthly_rev = pd.DataFrame(columns=["Month", "Revenue"])
-                    else:
-                        monthly_rev = pd.DataFrame(columns=["Month", "Revenue"])
-
-                    top_countries_df = pd.DataFrame(top_countries_data)
-                    if not top_countries_df.empty and "Country" in top_countries_df.columns:
-                        top_countries_df = top_countries_df[top_countries_df["Country"].isin(selected_countries)]
-
-                    if country_top_prods:
-                        cp_df = pd.DataFrame(country_top_prods)
-                        cp_df = cp_df[cp_df["Country"].isin(selected_countries)]
-                        if not cp_df.empty:
-                            top_products_df = (
-                                cp_df.groupby(["StockCode", "Description", "Product"], as_index=False)
-                                .agg(Revenue=("Revenue", "sum"), Quantity=("Quantity", "sum"), Orders=("Orders", "sum"))
-                                .sort_values("Revenue", ascending=False)
-                                .head(10)
-                            )
-                        else:
-                            top_products_df = pd.DataFrame()
-                    else:
-                        top_products_df = pd.DataFrame(top_products_data)
-
-                    country_sub = f"Filtered ({len(selected_countries)} {'countries' if len(selected_countries) > 1 else 'country'})"
-                    orders_sub = "Invoices in selection"
-                    cust_sub = "Profiles in selection"
-                    aov_sub = "Avg / order in selection"
-                else:
-                    # Fallback to transactions if country summary missing
-                    biz_tx = load_business_transactions()
-                    if not biz_tx.empty and "Country" in biz_tx.columns:
-                        tx_sub = biz_tx[biz_tx["Country"].isin(selected_countries)]
-                        if not tx_sub.empty:
-                            total_revenue = float(tx_sub["Revenue"].sum())
-                            total_orders = int(tx_sub["Invoice"].nunique())
-                            total_customers = int(tx_sub["Customer ID"].nunique()) if "Customer ID" in tx_sub.columns else 0
-                            avg_order_value = float(total_revenue / total_orders) if total_orders > 0 else 0.0
-
-                            monthly_tx = tx_sub.copy()
-                            monthly_tx["Month"] = monthly_tx["InvoiceDate"].dt.to_period("M").dt.to_timestamp()
-                            monthly_rev = monthly_tx.groupby("Month", as_index=False)["Revenue"].sum().sort_values("Month")
-
-                            top_countries_df = (
-                                tx_sub.groupby("Country", as_index=False)["Revenue"]
-                                .sum()
-                                .sort_values("Revenue", ascending=False)
-                                .head(10)
-                            )
-                            if "Description" in tx_sub.columns:
-                                top_products_df = (
-                                    tx_sub.groupby(["StockCode", "Description"], as_index=False)
-                                    .agg(Revenue=("Revenue", "sum"), Quantity=("Quantity", "sum"), Orders=("Invoice", "nunique"))
-                                    .sort_values("Revenue", ascending=False)
-                                    .head(10)
-                                )
-                                top_products_df["Product"] = (
-                                    top_products_df["StockCode"].astype(str)
-                                    + " — "
-                                    + top_products_df["Description"].astype(str).str.slice(0, 30)
-                                )
-                            else:
-                                top_products_df = pd.DataFrame()
-
-                            country_sub = f"Filtered ({len(selected_countries)} {'countries' if len(selected_countries) > 1 else 'country'})"
-                            orders_sub = "Invoices in selection"
-                            cust_sub = "Profiles in selection"
-                            aov_sub = "Avg / order in selection"
-                        else:
-                            total_revenue = 0.0
-                            total_orders = 0
-                            total_customers = 0
-                            avg_order_value = 0.0
-                            monthly_rev = pd.DataFrame(columns=["Month", "Revenue"])
-                            top_countries_df = pd.DataFrame()
-                            top_products_df = pd.DataFrame()
-                            country_sub = f"Filtered ({len(selected_countries)} countries)"
-                            orders_sub = "0 invoices"
-                            cust_sub = "0 profiles"
-                            aov_sub = "£0.00"
-                    else:
-                        total_revenue = float(biz_summary.get("total_revenue", 0.0))
-                        total_orders = int(biz_summary.get("total_orders", 0))
-                        total_customers = int(biz_summary.get("total_customers", 0))
-                        avg_order_value = float(biz_summary.get("avg_order_value", 0.0))
-                        monthly_rev = pd.DataFrame(biz_summary.get("monthly_revenue", []))
-                        if not monthly_rev.empty and "Month" in monthly_rev.columns:
-                            monthly_rev["Month"] = pd.to_datetime(monthly_rev["Month"])
-                        top_countries_df = pd.DataFrame(top_countries_data)
-                        top_products_df = pd.DataFrame(top_products_data)
-                        country_sub = "Global Total (Country breakdown unavailable)"
-                        orders_sub = "Global Unique Invoices"
-                        cust_sub = "Global Unique Customer IDs"
-                        aov_sub = "Global Avg / Order"
-                        st.info("ℹ️ Country-level breakdown is currently unavailable from the cached summary. Retaining global catalog totals.")
-            else:
-                # 3. Date range is narrowed (not is_full_span): calculate dynamically from clean transactions
-                biz_tx = load_business_transactions()
-                if not biz_tx.empty and "InvoiceDate" in biz_tx.columns:
-                    start_d = pd.to_datetime(date_range[0])
-                    end_d = pd.to_datetime(date_range[1]) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
-                    tx_date = biz_tx[(biz_tx["InvoiceDate"] >= start_d) & (biz_tx["InvoiceDate"] <= end_d)]
-                    if "Country" in tx_date.columns and selected_countries:
-                        tx_date = tx_date[tx_date["Country"].isin(selected_countries)]
-                    elif not selected_countries:
-                        tx_date = tx_date.iloc[0:0]
-
-                    if not tx_date.empty:
-                        total_revenue = float(tx_date["Revenue"].sum())
-                        total_orders = int(tx_date["Invoice"].nunique())
-                        total_customers = int(tx_date["Customer ID"].nunique()) if "Customer ID" in tx_date.columns else 0
-                        avg_order_value = float(total_revenue / total_orders) if total_orders > 0 else 0.0
-
-                        monthly_tx = tx_date.copy()
-                        monthly_tx["Month"] = monthly_tx["InvoiceDate"].dt.to_period("M").dt.to_timestamp()
-                        monthly_rev = monthly_tx.groupby("Month", as_index=False)["Revenue"].sum().sort_values("Month")
-
-                        if "Country" in tx_date.columns:
-                            top_countries_df = (
-                                tx_date.groupby("Country", as_index=False)["Revenue"]
-                                .sum()
-                                .sort_values("Revenue", ascending=False)
-                                .head(10)
-                            )
-                        else:
-                            top_countries_df = pd.DataFrame()
-
-                        if "Description" in tx_date.columns:
-                            top_products_df = (
-                                tx_date.groupby(["StockCode", "Description"], as_index=False)
-                                .agg(Revenue=("Revenue", "sum"), Quantity=("Quantity", "sum"), Orders=("Invoice", "nunique"))
-                                .sort_values("Revenue", ascending=False)
-                                .head(10)
-                            )
-                            top_products_df["Product"] = (
-                                top_products_df["StockCode"].astype(str)
-                                + " — "
-                                + top_products_df["Description"].astype(str).str.slice(0, 30)
-                            )
-                        else:
-                            top_products_df = pd.DataFrame()
-
-                        if is_all_countries:
-                            country_sub = "All countries (Date filtered)"
-                        else:
-                            country_sub = f"Filtered ({len(selected_countries)} {'countries' if len(selected_countries) > 1 else 'country'})"
-                        orders_sub = "Invoices in date range"
-                        cust_sub = "Customers in date range"
-                        aov_sub = "Filtered Revenue / Orders"
-                    else:
-                        total_revenue = 0.0
-                        total_orders = 0
-                        total_customers = 0
-                        avg_order_value = 0.0
-                        monthly_rev = pd.DataFrame(columns=["Month", "Revenue"])
-                        top_countries_df = pd.DataFrame()
-                        top_products_df = pd.DataFrame()
-                        country_sub = "Filtered selection"
-                        orders_sub = "0 invoices in range"
-                        cust_sub = "0 customers in range"
-                        aov_sub = "£0.00"
-                else:
-                    # Parquet transactions unavailable: fallback to slicing monthly revenue with clear labels
-                    monthly_rev = pd.DataFrame(biz_summary.get("monthly_revenue", []))
-                    if not monthly_rev.empty and "Month" in monthly_rev.columns:
-                        monthly_rev["Month"] = pd.to_datetime(monthly_rev["Month"])
-                        start_d = pd.to_datetime(date_range[0])
-                        end_d = pd.to_datetime(date_range[1]) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
-                        monthly_rev = monthly_rev[(monthly_rev["Month"] >= start_d) & (monthly_rev["Month"] <= end_d)]
-                        total_revenue = float(monthly_rev["Revenue"].sum()) if not monthly_rev.empty else 0.0
-                    else:
-                        total_revenue = float(biz_summary.get("total_revenue", 0.0))
-
-                    total_orders = int(biz_summary.get("total_orders", 0))
-                    total_customers = int(biz_summary.get("total_customers", 0))
-                    avg_order_value = float(biz_summary.get("avg_order_value", 0.0))
-                    top_countries_df = pd.DataFrame(top_countries_data)
-                    top_products_df = pd.DataFrame(top_products_data)
-                    country_sub = "Date-filtered Revenue"
-                    orders_sub = "Global Invoices (Date filter unavailable)"
-                    cust_sub = "Global Customers (Date filter unavailable)"
-                    aov_sub = "Global Avg / Order"
-                    st.info("ℹ️ Transaction-level order and customer breakdowns unavailable for date filtering. Retaining global counts.")
-
+            total_revenue = float(biz_summary["total_revenue"])
+            total_orders = int(biz_summary["total_orders"])
+            total_customers = int(biz_summary["total_customers"])
+            avg_order_value = float(biz_summary["avg_order_value"])
+            monthly_rev = pd.DataFrame(biz_summary["monthly_revenue"])
+            monthly_rev["Month"] = pd.to_datetime(monthly_rev["Month"])
         else:
-            # Fallback path when precomputed summary JSON is not found
-            with st.spinner("Loading sales transactions..."):
+            with st.spinner("Loading cleaned sales transactions..."):
                 biz_df = load_business_transactions()
-
             if not biz_df.empty:
                 f1, f2 = st.columns(2)
                 with f1:
@@ -939,66 +623,25 @@ def render_dashboard():
                     start_d = pd.to_datetime(date_range[0])
                     end_d = pd.to_datetime(date_range[1]) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
                     filtered = filtered[(filtered["InvoiceDate"] >= start_d) & (filtered["InvoiceDate"] <= end_d)]
-
                 if filtered.empty:
                     total_revenue = None
-                    total_orders = 0
-                    total_customers = 0
-                    avg_order_value = 0.0
                     monthly_rev = pd.DataFrame()
-                    top_countries_df = pd.DataFrame()
-                    top_products_df = pd.DataFrame()
                 else:
                     total_revenue = float(filtered["Revenue"].sum())
                     total_orders = int(filtered["Invoice"].nunique())
-                    total_customers = int(filtered["Customer ID"].nunique()) if "Customer ID" in filtered.columns else 0
+                    total_customers = int(filtered["Customer ID"].nunique())
                     avg_order_value = total_revenue / total_orders if total_orders else 0.0
                     monthly = filtered.copy()
                     monthly["Month"] = monthly["InvoiceDate"].dt.to_period("M").dt.to_timestamp()
                     monthly_rev = monthly.groupby("Month", as_index=False)["Revenue"].sum().sort_values("Month")
-
-                    if "Country" in filtered.columns:
-                        top_countries_df = (
-                            filtered.groupby("Country", as_index=False)["Revenue"]
-                            .sum()
-                            .sort_values("Revenue", ascending=False)
-                            .head(10)
-                        )
-                    else:
-                        top_countries_df = pd.DataFrame()
-
-                    if "Description" in filtered.columns:
-                        top_products_df = (
-                            filtered.groupby(["StockCode", "Description"], as_index=False)
-                            .agg(Revenue=("Revenue", "sum"), Quantity=("Quantity", "sum"), Orders=("Invoice", "nunique"))
-                            .sort_values("Revenue", ascending=False)
-                            .head(10)
-                        )
-                        top_products_df["Product"] = (
-                            top_products_df["StockCode"].astype(str)
-                            + " \u2014 "
-                            + top_products_df["Description"].astype(str).str.slice(0, 30)
-                        )
-                    else:
-                        top_products_df = pd.DataFrame()
-
-                country_sub = f"Filtered ({len(selected_countries)} countries)"
-                orders_sub = "Unique invoices"
-                cust_sub = "Unique customer IDs"
-                aov_sub = "Revenue / Orders"
+                    st.caption(f"Showing {len(filtered):,} transactions across {total_orders:,} orders.")
             else:
                 total_revenue = None
                 monthly_rev = pd.DataFrame()
-                top_countries_df = pd.DataFrame()
-                top_products_df = pd.DataFrame()
-                country_sub = ""
-                orders_sub = ""
-                cust_sub = ""
-                aov_sub = ""
 
         if total_revenue is None:
             st.warning(
-                "\u26a0\ufe0f No transactions match the current filters (or no sales dataset found at `data/business_overview_summary.json` or `data/cleaned_data.parquet`). "
+                "⚠️ No transactions match the current filters (or no sales dataset at `data/cleaned_data.parquet` or `data/cleaned_data.xlsx`). "
                 "Widen the date range or select at least one country."
             )
         else:
@@ -1009,10 +652,6 @@ def render_dashboard():
                     <div class="metric-title">💰 Total Revenue</div>
                     <div class="metric-value">£{total_revenue:,.0f}</div>
                     <div class="metric-sub">Cleaned sales data</div>
-                <div class="metric-card">
-                    <div class="metric-title">Total Revenue</div>
-                    <div class="metric-value">\u00a3{total_revenue:,.0f}</div>
-                    <div class="metric-sub">{country_sub}</div>
                 </div>
                 """, unsafe_allow_html=True)
             with b2:
@@ -1020,7 +659,7 @@ def render_dashboard():
                 <div class="metric-card" style="border-top: 4px solid #10B981;">
                     <div class="metric-title">🧾 Total Orders</div>
                     <div class="metric-value">{total_orders:,}</div>
-                    <div class="metric-sub">{orders_sub}</div>
+                    <div class="metric-sub">Unique invoices</div>
                 </div>
                 """, unsafe_allow_html=True)
             with b3:
@@ -1028,7 +667,7 @@ def render_dashboard():
                 <div class="metric-card" style="border-top: 4px solid #8B5CF6;">
                     <div class="metric-title">👥 Total Customers</div>
                     <div class="metric-value">{total_customers:,}</div>
-                    <div class="metric-sub">{cust_sub}</div>
+                    <div class="metric-sub">Unique customer IDs</div>
                 </div>
                 """, unsafe_allow_html=True)
             with b4:
@@ -1056,98 +695,58 @@ def render_dashboard():
                     .sum()
                     .sort_values("Revenue", ascending=False)
                     .head(10)
-                <div class="metric-card">
-                    <div class="metric-title">Avg Order Value</div>
-                    <div class="metric-value">\u00a3{avg_order_value:,.2f}</div>
-                    <div class="metric-sub">{aov_sub}</div>
-                </div>
-                """, unsafe_allow_html=True)
-
-            if not monthly_rev.empty:
-                chart_monthly_rev = monthly_rev.copy()
-                if "Month" in chart_monthly_rev.columns:
-                    chart_monthly_rev["Month"] = pd.to_datetime(chart_monthly_rev["Month"]).dt.to_period("M").dt.to_timestamp()
-
-                rev_fig = px.line(
-                    chart_monthly_rev,
-                    x="Month",
-                    y="Revenue",
-                    title="Monthly Revenue Trend",
-                    markers=True,
                 )
-                rev_fig.update_layout(height=320, margin=dict(l=40, r=40, t=30, b=40))
-                rev_fig.update_xaxes(
-                    type="date",
-                    tickformat="%b %Y",
-                    dtick="M1" if len(chart_monthly_rev) <= 12 else "M2",
-                )
-                if len(chart_monthly_rev) == 1:
-                    m_val = pd.to_datetime(chart_monthly_rev["Month"].iloc[0])
-                    rev_fig.update_xaxes(
-                        range=[
-                            (m_val - pd.DateOffset(days=15)).strftime("%Y-%m-%d"),
-                            (m_val + pd.DateOffset(days=15)).strftime("%Y-%m-%d"),
-                        ]
-                    )
-                rev_fig.update_traces(
-                    hovertemplate="Month: %{x|%b %Y}<br>Revenue: £%{y:,.2f}<extra></extra>"
-                )
-                st.plotly_chart(rev_fig, width="stretch")
-                csv_monthly = monthly_rev.to_csv(index=False).encode("utf-8")
-                st.download_button(
-                    label="\u2b07\ufe0f Download Filtered Monthly Revenue CSV",
-                    data=csv_monthly,
-                    file_name="business_monthly_revenue_filtered.csv",
-                    mime="text/csv",
-                )
-
-            # Top 10 Countries section
-            if not top_countries_df.empty and "Country" in top_countries_df.columns:
                 country_fig = px.bar(
-                    top_countries_df.head(10),
+                    top_countries,
                     x="Country",
                     y="Revenue",
-                    title="Top 10 Countries by Revenue",
+                    title="Top 10 Countries by Revenue (Filtered)",
                     color="Revenue",
                     color_continuous_scale="Blues",
                 )
                 country_fig.update_layout(height=320, margin=dict(l=40, r=40, t=30, b=40), xaxis_tickangle=-20, template="plotly_white")
                 st.plotly_chart(country_fig, width="stretch")
-                csv_countries = top_countries_df.to_csv(index=False).encode("utf-8")
+                csv_monthly = monthly_rev.to_csv(index=False).encode("utf-8")
                 st.download_button(
-                    label="\u2b07\ufe0f Download Country Revenue CSV",
-                    data=csv_countries,
-                    file_name="business_country_revenue.csv",
+                    label="⬇️ Download Filtered Monthly Revenue CSV",
+                    data=csv_monthly,
+                    file_name="business_monthly_revenue_filtered.csv",
                     mime="text/csv",
                 )
-            else:
-                st.info("\u2139\ufe0f Country revenue breakdown not available in the current summary dataset.")
 
-            # Top 10 Products section
-            if not top_products_df.empty:
+            if not biz_summary and "filtered" in locals() and not filtered.empty and "Description" in filtered.columns:
+                top_products = (
+                    filtered.groupby(["StockCode", "Description"], as_index=False)
+                    .agg(Revenue=("Revenue", "sum"), Quantity=("Quantity", "sum"), Orders=("Invoice", "nunique"))
+                    .sort_values("Revenue", ascending=False)
+                    .head(10)
+                )
+                top_products["Product"] = (
+                    top_products["StockCode"].astype(str)
+                    + " — "
+                    + top_products["Description"].astype(str).str.slice(0, 30)
+                )
                 prod_fig = px.bar(
-                    top_products_df.head(10),
-                    x="Product" if "Product" in top_products_df.columns else "StockCode",
+                    top_products,
+                    x="Product",
                     y="Revenue",
-                    title="Top 10 Products by Revenue",
+                    title="Top 10 Products by Revenue (Filtered)",
                     color="Revenue",
                     color_continuous_scale="Greens",
                 )
                 prod_fig.update_layout(height=340, margin=dict(l=40, r=40, t=30, b=40), xaxis_tickangle=-25, template="plotly_white")
                 st.plotly_chart(prod_fig, width="stretch")
-                prod_table_cols = [c for c in ["Product", "StockCode", "Description", "Revenue", "Quantity", "Orders"] if c in top_products_df.columns]
-                prod_table = top_products_df[prod_table_cols].copy()
+                prod_table = top_products[["Product", "Revenue", "Quantity", "Orders"]].copy()
                 prod_table["Revenue"] = prod_table["Revenue"].round(2)
                 st.dataframe(prod_table, width="stretch")
-                csv_products = top_products_df.to_csv(index=False).encode("utf-8")
+                csv_products = top_products.to_csv(index=False).encode("utf-8")
                 st.download_button(
-                    label="\u2b07\ufe0f Download Top Products CSV",
+                    label="⬇️ Download Top Products CSV",
                     data=csv_products,
-                    file_name="business_top_products.csv",
+                    file_name="business_top_products_filtered.csv",
                     mime="text/csv",
                 )
-            else:
-                st.info("\u2139\ufe0f Top products revenue breakdown not available in the current summary dataset.")
+
     # --- PAGE: Customers ---
     if page == "Customers":
         st.subheader("👥 Customers — Segmentation at a Glance")
@@ -1477,136 +1076,39 @@ def render_dashboard():
         st.subheader("🏆 Model Benchmarking & Holdout Evaluation")
         st.caption("Compare Prophet, LSTM, LightGBM and baselines on holdout MAE.")
         st.divider()
-        st.subheader("Model Benchmarking & Portfolio-Level Holdout Evaluation")
 
-        weekly_df, weekly_meta, val_summary_df = load_weekly_portfolio_validation_metrics()
-
-        # 1. Prominent Portfolio-Level Validation Scorecard
-        st.markdown("##### \U0001f3af Weekly Aggregated Portfolio Validation Scorecard (50 Representative SKUs)")
-
-        verified_ensemble_wmape = None
-        eval_window_str = "2011-10-11 to 2011-11-07 (4 Complete 7-Day Weeks)"
-        if not weekly_df.empty and "Model" in weekly_df.columns and "Portfolio_APE_pct" in weekly_df.columns:
-            ens_weeks = weekly_df[weekly_df["Model"] == "Prophet_LSTM_Ensemble"]
-            if not ens_weeks.empty:
-                verified_ensemble_wmape = float(ens_weeks["Portfolio_APE_pct"].mean())
-        elif not val_summary_df.empty and "Weekly_Portfolio_MAPE_pct" in val_summary_df.columns:
-            ens_row = val_summary_df[val_summary_df["Model"] == "Prophet_LSTM_Ensemble"]
-            if not ens_row.empty:
-                verified_ensemble_wmape = float(ens_row["Weekly_Portfolio_MAPE_pct"].iloc[0])
-
-        score_c1, score_c2, score_c3, score_c4 = st.columns([1.0, 1.1, 1.6, 1.3])
-        with score_c1:
-            st.metric("Project Acceptance Target", "<= 12.0%", "Weekly Portfolio MAPE")
-        with score_c2:
-            ens_display = f"{verified_ensemble_wmape:.2f}%" if verified_ensemble_wmape is not None else "Not available"
-            st.metric("Active Production Ensemble", ens_display, "Verified 50:50 Weights")
-        with score_c3:
-            if verified_ensemble_wmape is not None:
-                status_label = "Threshold Met" if verified_ensemble_wmape <= 12.0 else "Threshold Not Yet Met"
-                status_sub = f"{verified_ensemble_wmape:.2f}% vs. 12.00% target"
-            else:
-                status_label = "Awaiting Verification"
-                status_sub = "Evaluation pending"
-            st.metric("Acceptance Status", status_label, status_sub)
-        with score_c4:
-            st.metric("Evaluation Horizon", "4 Complete Weeks", eval_window_str)
-
-        # 2. Complete Scoring Weeks Portfolio Breakdown Expander
-        if not weekly_df.empty:
-            with st.expander("\U0001f4c5 View Audited Weekly Portfolio Accuracy Breakdown (2011-10-11 to 2011-11-07)"):
-                st.caption(
-                    "Each complete 7-day week aggregates actual and predicted consumption across all 50 priority SKUs: "
-                    r"$\text{Weekly Portfolio APE} = \frac{|\sum y - \sum \hat{y}|}{\sum y} \times 100\%$. "
-                    "Reported metric is the arithmetic mean across the 4 complete scoring weeks."
-                )
-                weekly_pivot = weekly_df.pivot(index="Week", columns="Model", values="Portfolio_APE_pct").reset_index()
-                for col in weekly_pivot.columns:
-                    if col != "Week":
-                        weekly_pivot[col] = weekly_pivot[col].map(lambda v: f"{v:.2f}%" if pd.notna(v) else "\u2014")
-                st.dataframe(weekly_pivot, width="stretch")
-
-        st.markdown("---")
-
-        # 3. Empirical Model Comparison Table
         comparison_df = load_model_comparison_table()
         if not comparison_df.empty:
-            st.markdown("##### \U0001f3c6 Multi-Model Architecture Comparison")
-
-            model_weekly_map = {}
-            if not weekly_df.empty and "Model" in weekly_df.columns and "Portfolio_APE_pct" in weekly_df.columns:
-                for m_name, grp in weekly_df.groupby("Model"):
-                    model_weekly_map[m_name] = grp["Portfolio_APE_pct"].mean()
-
-            display_df = comparison_df.rename(columns={
-                "Holdout MAPE (%)": "Daily SKU Unweighted MAPE (%)",
-                "Holdout sMAPE (%)": "Daily SKU sMAPE (%)"
-            }).copy()
-
-            def get_weekly_portfolio_metric(row_model: str) -> str:
-                if "Prophet+LSTM Ensemble" in row_model and ("Tuned" in row_model or "Default" in row_model):
-                    val = model_weekly_map.get("Prophet_LSTM_Ensemble")
-                    return f"{val:.2f}%" if val is not None else "Not available"
-                elif "Prophet (Tuned)" in row_model:
-                    val = model_weekly_map.get("Optuna_Tuned_Prophet")
-                    return f"{val:.2f}%" if val is not None else "Not available"
-                elif "Prophet (Default)" in row_model:
-                    val = model_weekly_map.get("Default_Prophet")
-                    return f"{val:.2f}%" if val is not None else "Not available"
-                elif "PyTorch LSTM (Tuned)" in row_model:
-                    val = model_weekly_map.get("PyTorch_LSTM_Tuned")
-                    return f"{val:.2f}%" if val is not None else "Not available"
-                else:
-                    return "Not available"
-
-            display_df["Weekly Portfolio MAPE (%)"] = display_df["Model"].apply(get_weekly_portfolio_metric)
-
-            def get_gov_status(row_model: str) -> str:
-                if "Prophet+LSTM Ensemble" in row_model and "Tuned" in row_model:
-                    return "Active Production Model"
-                return "Benchmark / Candidate"
-
-            display_df["Governance Status"] = display_df["Model"].apply(get_gov_status)
-
-            cols = ["Model", "Governance Status", "Weekly Portfolio MAPE (%)", "Daily SKU Unweighted MAPE (%)", "Daily SKU sMAPE (%)", "Holdout MAE", "Holdout RMSE"]
-            cols = [c for c in cols if c in display_df.columns] + [c for c in display_df.columns if c not in cols]
-            display_df = display_df[cols]
-
-            def highlight_prod_model(row):
-                if "Active Production" in str(row.get("Governance Status", "")):
-                    return ["background-color: #DEF7EC; font-weight: bold;"] * len(row)
-                return [""] * len(row)
-
-            styled_table = display_df.style.apply(highlight_prod_model, axis=1)
-            st.dataframe(styled_table, width="stretch")
+            st.markdown("##### 🏆 Empirical Model Comparison (Top 50 Representative Products)")
+            st.dataframe(comparison_df.style.highlight_min(subset=["Holdout MAE", "Holdout RMSE"], color="#DEF7EC"), width="stretch")
 
             bar_fig = px.bar(
                 comparison_df,
                 x="Model",
                 y="Holdout MAE",
-                title="Model Daily MAE Comparison (Holdout MAE \u2014 Lower is Better)",
+                title="Model Accuracy Comparison (Holdout MAE — Lower is Better)",
                 color="Holdout MAE",
                 color_continuous_scale="Blues_r"
             )
             bar_fig.update_layout(height=320, margin=dict(l=40, r=40, t=30, b=40), xaxis_tickangle=-15, template="plotly_white")
             st.plotly_chart(bar_fig, width="stretch")
         else:
-            st.warning("\u26a0\ufe0f Model comparison benchmark table not found at `outputs/forecasting/phase6/tuned_model_comparison.csv`.")
+            st.warning("⚠️ Model comparison benchmark table not found at `outputs/forecasting/phase6/tuned_model_comparison.csv`. Run Phase 6 evaluation to populate empirical model comparison results.")
 
         st.info(
             r"""
-            \u2139\ufe0f **Operational Accuracy Reconciliation & The Low-Denominator MAPE Singularity:**
-            - **Why is Daily SKU-Level MAPE High (>300%)?**
-              In daily retail transactions, demand is highly intermittent ($20.1\%$ zero days, and 25th percentile is only **2 units**).
-              When actual demand is $y_t = 2$ and the model predicts $\hat{y}_t = 30$, the unweighted error is $\frac{|2 - 30|}{2} = \mathbf{1,400\%}$.
-              Standard unweighted daily MAPE averages these large ratios equally across days, distorting business reality.
-            - **Why Weekly Portfolio-Level MAPE is the True Operational Metric:**
-              Procurement and replenishment operate on weekly review cycles across product categories.
-              Aggregating portfolio demand over each complete 7-day week ($\frac{|\sum y - \sum \hat{y}|}{\sum y} \times 100\%$) reduces error dramatically to **14.81%** for the production ensemble (approaching the project acceptance target of **<= 12.0%**).
-            - **Why Naive Moving Average (MA28) is NOT the Superior Operational Model:**
-              Although Baseline MA28 records a lower daily MAE on intermittent zero days by predicting flat low values, it severely underpredicts demand surges, fails to capture trend/seasonality, and cannot size dynamic safety stocks. The Prophet + PyTorch LSTM Hybrid Ensemble remains the governance-approved production model.
+            ℹ️ **Operational Accuracy Reconciliation & The Low-Denominator MAPE Singularity:**
+            - **Why is Daily SKU MAPE High (>300%)?**
+              In retail daily transactions, demand is highly intermittent ($20.1\%$ zero days, and $25^{\text{th}}$ percentile is only **2 units**).
+              When actual demand is $y_t = 2$ and the model predicts $\hat{y}_t = 30$, the absolute percentage error is $\\frac{|2 - 30|}{2} = \\mathbf{1,400\\%}$.
+              Standard unweighted MAPE averages these large ratios equally across days, distorting business reality.
+            - **Why WMAPE is the True Operational Metric:**
+              **Volume-Weighted MAPE (WMAPE)** computes $\\frac{\\sum |y_t - \\hat{y}_t|}{\\sum y_t} = \\mathbf{94.04\\%}$, properly weighting high-volume revenue days.
+            - **Weekly Aggregation:**
+              Aggregating daily forecasts to weekly replenishment cycles reduces percentage errors dramatically, enabling reliable procurement planning.
             """
         )
+
     # --- PAGE: Drift ---
     if page == "Drift":
         st.subheader("🛰️ Evidently AI — Continuous Data & Feature Drift Monitoring")
