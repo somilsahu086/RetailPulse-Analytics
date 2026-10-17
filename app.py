@@ -380,12 +380,31 @@ def render_dashboard():
             border-radius: 4px;
             font-weight: 600;
         }
+        /* Big sidebar navigation radio buttons */
+        section[data-testid="stSidebar"] .stRadio label {
+            font-size: 1.15rem;
+            font-weight: 600;
+        }
+        section[data-testid="stSidebar"] .stRadio > div[role="radiogroup"] {
+            gap: 0.7rem;
+        }
     </style>
     """, unsafe_allow_html=True)
 
     # ---------------- Sidebar Controls ----------------
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📑 Navigate")
+    page = st.sidebar.radio(
+        "Go to",
+        options=["Overview", "Customers", "Forecast", "Inventory", "Models", "Drift", "Retraining"],
+        index=0,
+    )
+
+    st.sidebar.markdown("---")
     st.sidebar.title("RetailPulse Control")
     st.sidebar.caption("Demand forecasting & inventory")
+
+    st.sidebar.markdown("---")
 
     catalog_df = load_catalog()
     if catalog_df.empty:
@@ -457,13 +476,6 @@ def render_dashboard():
     lead_time_days = st.session_state["lead_time_days"]
     service_level = st.session_state["service_level"]
     review_period_days = st.session_state["review_period_days"]
-
-    # ---------------- Header navigation (website-style) ----------------
-    page = st.segmented_control(
-        "Navigate",
-        options=["Overview", "Customers", "Forecast", "Inventory", "Models", "Drift", "Retraining"],
-        default="Overview",
-    )
 
     # ---------------- Predictions & Metrics ----------------
     predictions_store = load_all_predictions()
