@@ -177,9 +177,10 @@ def task_drift_monitoring(
         ref_start="2011-01-01",
         ref_end="2011-10-10",
         curr_start="2011-10-11",
-        curr_end="2011-12-09",
+        curr_end="2011-11-07",
         stock_codes=top_codes,
-        feature_cols=CORE_MONITORED_FEATURES
+        feature_cols=CORE_MONITORED_FEATURES,
+        enforce_holdout_quarantine=True
     )
 
     drift_summary, quality_summary, feature_drift_df = run_drift_monitoring(

@@ -58,6 +58,56 @@ The DAG executes 8 discrete, idempotent tasks in strict chronological sequence:
 8. **`mlflow_tracking`**:
    - Logs retraining runs, parameters, holdout metrics, promotion decisions, and artifacts to the local MLflow registry (`RetailPulse-Demand-Forecasting`).
 
+
+---
+
+## Scheduled Monitoring DAG: `demand_drift_monitoring` (Monitoring-Only)
+
+### Overview
+A dedicated, lightweight, fail-safe Airflow DAG designed strictly for **drift detection, data-quality auditing, and forecast governance**. This DAG does **not** train, tune, select, or deploy models.
+
+### Task Architecture & Chronological Flow
+```
+[validate_inputs_and_quarantine]
+               │
+               ▼
+   [audit_schema_and_quality]
+               │
+               ▼
+     [monitor_feature_drift]
+               │
+               ▼
+   [monitor_prediction_drift]
+               │
+               ▼
+[evaluate_performance_and_bias]
+               │
+               ▼
+ [compile_governance_and_alert]
+```
+
+### Task Descriptions
+1. **`validate_inputs_and_quarantine`**:
+   - Validates data presence and column schemas.
+   - Enforces fail-safe holdout quarantine before data access (`t <= 2011-11-09`).
+2. **`audit_schema_and_quality`**:
+   - Evaluates missing value shares, infinite counts, and schema conformity.
+   - Fails visibly if data quality thresholds are violated.
+3. **`monitor_feature_drift`**:
+   - Executes Evidently AI drift detection across all 12 monitored features using normalized Wasserstein distance.
+   - Saves run-specific HTML report and CSV breakdown to an isolated run directory (`outputs/forecasting/monitoring_runs/<run_id>/`).
+4. **`monitor_prediction_drift`**:
+   - Audits model prediction distributions using the Kolmogorov-Smirnov 2-sample test.
+5. **`evaluate_performance_and_bias`**:
+   - Evaluates realized error where actuals are available.
+   - If ground truth is pending, reports `ACTUALS_PENDING` safely without crashing.
+   - Clearly distinguishes 30-day aggregate volume error from official mean weekly portfolio MAPE.
+6. **`compile_governance_and_alert`**:
+   - Gathers all 4 monitoring pillars and evaluates retraining governance rules.
+   - Feature drift alone does **not** trigger model retraining.
+   - Automated model retraining and replacement are strictly forbidden.
+   - Official 14.81% dashboard scorecard remains frozen and unchanged.
+
 ---
 
 ## Local Development & Validation Setup

@@ -21,6 +21,7 @@ import json
 from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
+from scipy import stats
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -58,13 +59,14 @@ CORE_MONITORED_FEATURES = [
 def prepare_monitoring_datasets(
     daily_demand_df: pd.DataFrame,
     ref_start: str = "2011-01-01",
-    ref_end: str = "2011-10-10",
-    curr_start: str = "2011-10-11",
-    curr_end: str = "2011-12-09",
+    ref_end: str = "2011-08-11",
+    curr_start: str = "2011-08-12",
+    curr_end: str = "2011-11-07",
     stock_codes: Optional[List[str]] = None,
     feature_cols: Optional[List[str]] = None,
     date_col: str = "Date",
-    demand_col: str = "Demand"
+    demand_col: str = "Demand",
+    enforce_holdout_quarantine: bool = True
 ) -> Tuple[pd.DataFrame, pd.DataFrame, List[str]]:
     """
     Extract and prepare chronological Reference and Current datasets with forecasting features.
@@ -72,6 +74,7 @@ def prepare_monitoring_datasets(
     Strict Anti-Leakage Safeguard:
     - Enforces that ref_end is strictly earlier than curr_start.
     - Asserts that no dates in the Reference set overlap with or follow dates in the Current set.
+    - Strict fail-safe quarantine validation occurs before loading or slicing any data.
 
     Parameters
     ----------
@@ -93,15 +96,15 @@ def prepare_monitoring_datasets(
         Name of date column.
     demand_col : str
         Name of demand/quantity column.
+    enforce_holdout_quarantine : bool
+        If True (default), strictly forbids monitoring windows from extending into or
+        accessing the official quarantined holdout period (2011-11-10 to 2011-12-09).
 
     Returns
     -------
     Tuple[pd.DataFrame, pd.DataFrame, List[str]]
         (reference_df, current_df, available_features)
     """
-    if daily_demand_df.empty:
-        raise ValueError("Cannot prepare monitoring datasets from empty DataFrame.")
-
     ref_start_ts = pd.to_datetime(ref_start).floor("D")
     ref_end_ts = pd.to_datetime(ref_end).floor("D")
     curr_start_ts = pd.to_datetime(curr_start).floor("D")
@@ -119,6 +122,26 @@ def prepare_monitoring_datasets(
 
     if curr_start_ts > curr_end_ts:
         raise ValueError(f"Current start date ({curr_start}) cannot be after current end date ({curr_end}).")
+
+    # Strict Fail-Safe Holdout Quarantine Validation
+    # Validates requested date boundaries before loading, slicing, or processing any data
+    if enforce_holdout_quarantine:
+        holdout_boundary = pd.Timestamp("2011-11-09")
+        if (
+            curr_end_ts > holdout_boundary
+            or curr_start_ts > holdout_boundary
+            or ref_end_ts > holdout_boundary
+            or ref_start_ts > holdout_boundary
+        ):
+            raise ValueError(
+                f"HOLDOUT QUARANTINE BREACH: Current monitoring window (ref: {ref_start} to {ref_end}, "
+                f"curr: {curr_start} to {curr_end}) extends into the quarantined holdout period "
+                f"(2011-11-10 to 2011-12-09). Drift monitoring must be performed strictly on "
+                f"development data (t <= 2011-11-09)."
+            )
+
+    if daily_demand_df is None or getattr(daily_demand_df, "empty", False):
+        raise ValueError("Cannot prepare monitoring datasets from empty DataFrame.")
 
     df = daily_demand_df.copy()
     df[date_col] = pd.to_datetime(df[date_col]).dt.floor("D")
@@ -340,11 +363,20 @@ def plot_drift_summary(
     ax.set_yticks(y_pos)
     ax.set_yticklabels(df_sorted["feature"], fontsize=10, fontweight="bold")
 
-    # Threshold marker
+    # Threshold marker and axis labeling
     threshold_val = df_sorted["threshold"].iloc[0] if "threshold" in df_sorted.columns else 0.05
-    ax.axvline(threshold_val, color="black", linestyle="--", linewidth=1.5, label=f"Significance Threshold (alpha = {threshold_val})")
+    stattest_name = df_sorted["stattest_name"].iloc[0] if "stattest_name" in df_sorted.columns else ""
+    is_wasserstein = "wasserstein" in str(stattest_name).lower()
 
-    ax.set_xlabel("Kolmogorov-Smirnov p-value (Score <= alpha implies statistically significant drift)", fontsize=11)
+    if is_wasserstein:
+        thresh_label = f"Wasserstein Drift Threshold ({threshold_val})"
+        xlabel = "Normalized Wasserstein Distance (Score > Threshold implies distribution drift)"
+    else:
+        thresh_label = f"Significance Threshold (alpha = {threshold_val})"
+        xlabel = f"{stattest_name or 'p-value'} (Score <= alpha implies statistically significant drift)"
+
+    ax.axvline(threshold_val, color="black", linestyle="--", linewidth=1.5, label=thresh_label)
+    ax.set_xlabel(xlabel, fontsize=11)
     ax.set_title(title, fontsize=12, fontweight="bold")
     ax.legend(loc="lower right", framealpha=0.9)
 
@@ -390,3 +422,223 @@ def build_monitoring_metadata(
         metadata["extra_metadata"] = extra_metadata
 
     return metadata
+
+
+def run_prediction_drift_monitoring(
+    reference_preds: Union[pd.Series, np.ndarray, list],
+    current_preds: Union[pd.Series, np.ndarray, list],
+    drift_threshold: float = 0.05,
+    prediction_col: str = "predicted_demand"
+) -> Dict[str, Any]:
+    """
+    Evaluate prediction-distribution drift between Reference and Current forecast outputs.
+
+    Distinguishes prediction drift from feature drift and performance degradation:
+    - Prediction drift flags shifts in model output distribution (e.g. seasonal volume ramps).
+    - It does NOT necessarily prove model degradation.
+
+    Parameters
+    ----------
+    reference_preds : Series or array
+        Historical baseline model predictions.
+    current_preds : Series or array
+        Recent monitoring window model predictions.
+    drift_threshold : float
+        P-value significance threshold (default: 0.05).
+    prediction_col : str
+        Name of the prediction metric.
+
+    Returns
+    -------
+    Dict[str, Any]
+        Prediction drift summary with KS statistic, p-value, and descriptive statistics.
+    """
+    ref_arr = np.asarray(reference_preds, dtype=float)
+    curr_arr = np.asarray(current_preds, dtype=float)
+
+    ref_arr = ref_arr[np.isfinite(ref_arr)]
+    curr_arr = curr_arr[np.isfinite(curr_arr)]
+
+    if len(ref_arr) == 0 or len(curr_arr) == 0:
+        return {
+            "prediction_drift_detected": False,
+            "drift_score": 1.0,
+            "p_value": 1.0,
+            "ks_statistic": 0.0,
+            "threshold": float(drift_threshold),
+            "status": "INSUFFICIENT_DATA",
+            "message": "Empty prediction arrays provided."
+        }
+
+    ks_res = stats.ks_2samp(ref_arr, curr_arr)
+    ks_stat = float(ks_res.statistic)
+    p_val = float(ks_res.pvalue)
+
+    ref_mean = float(np.mean(ref_arr))
+    curr_mean = float(np.mean(curr_arr))
+    ref_std = float(np.std(ref_arr, ddof=1)) if len(ref_arr) > 1 else 0.0
+    curr_std = float(np.std(curr_arr, ddof=1)) if len(curr_arr) > 1 else 0.0
+    pct_mean_shift = (abs(curr_mean - ref_mean) / (abs(ref_mean) + 1e-8)) * 100.0
+
+    drift_detected = bool(p_val < drift_threshold)
+
+    return {
+        "prediction_metric": prediction_col,
+        "prediction_drift_detected": drift_detected,
+        "drift_status": "DRIFT_DETECTED" if drift_detected else "STABLE",
+        "stattest_name": "Kolmogorov-Smirnov 2-sample test",
+        "ks_statistic": round(ks_stat, 4),
+        "p_value": round(p_val, 6),
+        "drift_threshold": float(drift_threshold),
+        "reference_count": int(len(ref_arr)),
+        "current_count": int(len(curr_arr)),
+        "reference_mean": round(ref_mean, 4),
+        "current_mean": round(curr_mean, 4),
+        "reference_std": round(ref_std, 4),
+        "current_std": round(curr_std, 4),
+        "percent_mean_shift": round(pct_mean_shift, 2),
+        "interpretation": (
+            "Prediction drift measures shifts in the distribution of model outputs. "
+            "A detected drift indicates changing forecast scale/variance (e.g. seasonal ramp), "
+            "but does not alone prove model performance degradation."
+        )
+    }
+
+
+def run_model_performance_monitoring(
+    actual_demand: Union[pd.Series, np.ndarray, list],
+    predicted_demand: Union[pd.Series, np.ndarray, list],
+    mape_warning_threshold: float = 15.0,
+    mape_critical_threshold: float = 20.0,
+    bias_warning_threshold: float = 10.0
+) -> Dict[str, Any]:
+    """
+    Evaluate actual-versus-forecast performance and bias where ground truth actuals are realized.
+
+    Clearly distinguishes actual forecast error from input feature or prediction drift.
+    """
+    act_arr = np.asarray(actual_demand, dtype=float)
+    pred_arr = np.asarray(predicted_demand, dtype=float)
+
+    valid_mask = np.isfinite(act_arr) & np.isfinite(pred_arr)
+    act_arr = act_arr[valid_mask]
+    pred_arr = pred_arr[valid_mask]
+
+    if len(act_arr) == 0:
+        return {
+            "performance_status": "INSUFFICIENT_DATA",
+            "message": "Empty actual/predicted demand arrays."
+        }
+
+    act_sum = float(np.sum(act_arr))
+    pred_sum = float(np.sum(pred_arr))
+
+    if act_sum <= 0:
+        raise ValueError("Sum of actual demand must be positive to calculate portfolio MAPE.")
+
+    portfolio_mape_pct = (abs(pred_sum - act_sum) / act_sum) * 100.0
+    signed_bias_pct = ((pred_sum - act_sum) / act_sum) * 100.0
+
+    errors = pred_arr - act_arr
+    abs_errors = np.abs(errors)
+    mae = float(np.mean(abs_errors))
+    rmse = float(np.sqrt(np.mean(errors ** 2)))
+
+    pos_mask = act_arr > 0
+    pointwise_mape_pct = float(np.mean(abs_errors[pos_mask] / act_arr[pos_mask])) * 100.0 if np.any(pos_mask) else 0.0
+
+    mad = float(np.mean(abs_errors))
+    tracking_signal = float(np.sum(errors) / (mad + 1e-8))
+
+    if portfolio_mape_pct > mape_critical_threshold:
+        status = "PERFORMANCE_CRITICAL"
+    elif portfolio_mape_pct > mape_warning_threshold or abs(signed_bias_pct) > bias_warning_threshold:
+        status = "PERFORMANCE_DEGRADED"
+    else:
+        status = "PERFORMANCE_HEALTHY"
+
+    return {
+        "sample_count": int(len(act_arr)),
+        "actual_total_units": round(act_sum, 2),
+        "predicted_total_units": round(pred_sum, 2),
+        "aggregate_volume_error_pct": round(portfolio_mape_pct, 4),
+        "portfolio_mape_pct": round(portfolio_mape_pct, 4),
+        "metric_scope_note": (
+            "aggregate_volume_error_pct represents net volume discrepancy across the evaluated horizon. "
+            "It is distinct from official mean weekly portfolio MAPE, where weekly errors do not cancel out."
+        ),
+        "pointwise_mape_pct": round(pointwise_mape_pct, 4),
+        "signed_bias_pct": round(signed_bias_pct, 4),
+        "mae": round(mae, 4),
+        "rmse": round(rmse, 4),
+        "tracking_signal": round(tracking_signal, 4),
+        "performance_status": status,
+        "mape_warning_threshold": float(mape_warning_threshold),
+        "mape_critical_threshold": float(mape_critical_threshold),
+        "bias_warning_threshold": float(bias_warning_threshold),
+        "interpretation": (
+            "Actual forecast error measures real predictive performance against ground truth. "
+            "Note: Net aggregate volume error across an entire multi-week horizon allows positive errors in "
+            "some weeks to offset negative errors in others. Acceptance criteria must be judged against the "
+            "official mean weekly portfolio MAPE (14.81% on development backtests), not aggregate window volume."
+        )
+    }
+
+
+def run_schema_and_quality_audit(
+    reference_df: pd.DataFrame,
+    current_df: pd.DataFrame,
+    required_columns: Optional[List[str]] = None,
+    max_missing_share: float = 0.0
+) -> Dict[str, Any]:
+    """
+    Perform schema conformity and data quality integrity audits.
+    """
+    if reference_df.empty or current_df.empty:
+        return {
+            "schema_valid": False,
+            "quality_pass": False,
+            "status": "FAIL",
+            "message": "Empty DataFrame passed to schema audit."
+        }
+
+    req_cols = required_columns or CORE_MONITORED_FEATURES
+    ref_missing_cols = [c for c in req_cols if c not in reference_df.columns]
+    curr_missing_cols = [c for c in req_cols if c not in current_df.columns]
+
+    dtype_mismatches = {}
+    for c in req_cols:
+        if c in reference_df.columns and c in current_df.columns:
+            if reference_df[c].dtype != current_df[c].dtype:
+                dtype_mismatches[c] = (str(reference_df[c].dtype), str(current_df[c].dtype))
+
+    common_cols = [c for c in req_cols if c in reference_df.columns and c in current_df.columns]
+    ref_null_count = int(reference_df[common_cols].isna().sum().sum()) if common_cols else -1
+    curr_null_count = int(current_df[common_cols].isna().sum().sum()) if common_cols else -1
+
+    ref_null_share = float(reference_df[common_cols].isna().mean().mean()) if common_cols else 1.0
+    curr_null_share = float(current_df[common_cols].isna().mean().mean()) if common_cols else 1.0
+
+    schema_valid = (len(ref_missing_cols) == 0 and len(curr_missing_cols) == 0 and len(dtype_mismatches) == 0)
+    quality_pass = (ref_null_share <= max_missing_share and curr_null_share <= max_missing_share)
+
+    if schema_valid and quality_pass:
+        status = "PASS"
+    elif not schema_valid:
+        status = "FAIL"
+    else:
+        status = "WARNING"
+
+    return {
+        "schema_valid": schema_valid,
+        "quality_pass": quality_pass,
+        "status": status,
+        "reference_missing_columns": ref_missing_cols,
+        "current_missing_columns": curr_missing_cols,
+        "dtype_mismatches": dtype_mismatches,
+        "reference_null_count": ref_null_count,
+        "current_null_count": curr_null_count,
+        "reference_null_share": round(ref_null_share, 4),
+        "current_null_share": round(curr_null_share, 4),
+        "max_missing_share_threshold": float(max_missing_share)
+    }
