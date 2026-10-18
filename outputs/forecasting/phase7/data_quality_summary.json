@@ -1,6 +1,6 @@
 {
-  "reference_row_count": 14150,
-  "current_row_count": 3000,
+  "reference_row_count": 11150,
+  "current_row_count": 4400,
   "missing_values": {
     "reference_missing_count": 0,
     "current_missing_count": 0,
@@ -13,88 +13,88 @@
   },
   "feature_statistics": {
     "Demand": {
-      "reference_mean": 48.3293,
-      "current_mean": 64.9727,
-      "reference_std": 128.8512,
-      "current_std": 170.5613,
-      "mean_shift_percent": 34.44
+      "reference_mean": 47.2804,
+      "current_mean": 54.4345,
+      "reference_std": 132.1479,
+      "current_std": 143.6798,
+      "mean_shift_percent": 15.13
     },
     "lag_1": {
-      "reference_mean": 48.1348,
-      "current_mean": 65.5097,
-      "reference_std": 128.798,
-      "current_std": 170.704,
-      "mean_shift_percent": 36.1
+      "reference_mean": 46.7547,
+      "current_mean": 54.4652,
+      "reference_std": 131.5145,
+      "current_std": 141.513,
+      "mean_shift_percent": 16.49
     },
     "lag_7": {
-      "reference_mean": 46.6094,
-      "current_mean": 66.4033,
-      "reference_std": 126.3648,
-      "current_std": 168.637,
-      "mean_shift_percent": 42.47
+      "reference_mean": 45.7517,
+      "current_mean": 52.5909,
+      "reference_std": 131.0923,
+      "current_std": 135.4262,
+      "mean_shift_percent": 14.95
     },
     "lag_14": {
-      "reference_mean": 46.1598,
-      "current_mean": 64.282,
-      "reference_std": 126.6,
-      "current_std": 166.2811,
-      "mean_shift_percent": 39.26
+      "reference_mean": 44.13,
+      "current_mean": 53.5409,
+      "reference_std": 124.8803,
+      "current_std": 127.4395,
+      "mean_shift_percent": 21.33
     },
     "lag_21": {
-      "reference_mean": 46.0452,
-      "current_mean": 62.8883,
-      "reference_std": 126.6665,
-      "current_std": 164.3252,
-      "mean_shift_percent": 36.58
+      "reference_mean": 44.1541,
+      "current_mean": 53.5648,
+      "reference_std": 124.4994,
+      "current_std": 128.2525,
+      "mean_shift_percent": 21.31
     },
     "lag_28": {
-      "reference_mean": 45.9579,
-      "current_mean": 61.5353,
-      "reference_std": 126.1037,
-      "current_std": 162.7413,
-      "mean_shift_percent": 33.9
+      "reference_mean": 44.6769,
+      "current_mean": 53.5334,
+      "reference_std": 125.2569,
+      "current_std": 128.2997,
+      "mean_shift_percent": 19.82
     },
     "rolling_mean_7": {
-      "reference_mean": 47.584,
-      "current_mean": 64.0954,
-      "reference_std": 53.6461,
-      "current_std": 80.7651,
-      "mean_shift_percent": 34.7
+      "reference_mean": 46.133,
+      "current_mean": 54.068,
+      "reference_std": 54.7068,
+      "current_std": 59.3412,
+      "mean_shift_percent": 17.2
     },
     "rolling_std_7": {
-      "reference_mean": 68.8812,
-      "current_mean": 79.7975,
-      "reference_std": 105.0028,
-      "current_std": 133.0577,
-      "mean_shift_percent": 15.85
+      "reference_mean": 67.8246,
+      "current_mean": 74.6302,
+      "reference_std": 109.504,
+      "current_std": 113.8157,
+      "mean_shift_percent": 10.03
     },
     "rolling_mean_14": {
-      "reference_mean": 46.9905,
-      "current_mean": 63.8549,
-      "reference_std": 43.1367,
-      "current_std": 70.355,
-      "mean_shift_percent": 35.89
+      "reference_mean": 45.2001,
+      "current_mean": 54.3758,
+      "reference_std": 43.1272,
+      "current_std": 48.4801,
+      "mean_shift_percent": 20.3
     },
     "rolling_std_14": {
-      "reference_mean": 77.4243,
-      "current_mean": 89.904,
-      "reference_std": 97.1089,
-      "current_std": 126.6832,
-      "mean_shift_percent": 16.12
+      "reference_mean": 75.7513,
+      "current_mean": 85.2998,
+      "reference_std": 99.5889,
+      "current_std": 106.005,
+      "mean_shift_percent": 12.61
     },
     "rolling_mean_28": {
-      "reference_mean": 46.6724,
-      "current_mean": 62.7274,
-      "reference_std": 36.2161,
-      "current_std": 61.9353,
-      "mean_shift_percent": 34.4
+      "reference_mean": 44.7678,
+      "current_mean": 54.1893,
+      "reference_std": 36.0113,
+      "current_std": 39.5462,
+      "mean_shift_percent": 21.05
     },
     "rolling_std_28": {
-      "reference_mean": 85.927,
-      "current_mean": 99.3414,
-      "reference_std": 89.4301,
-      "current_std": 119.2297,
-      "mean_shift_percent": 15.61
+      "reference_mean": 83.7718,
+      "current_mean": 93.3511,
+      "reference_std": 90.6234,
+      "current_std": 91.2646,
+      "mean_shift_percent": 11.43
     }
   }
 }

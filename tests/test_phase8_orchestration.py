@@ -31,12 +31,21 @@ for p in [SRC_PATH, DAGS_PATH, PROJECT_ROOT]:
         sys.path.insert(0, p)
 
 from demand_forecasting_retraining import dag
+from demand_drift_monitoring_dag import dag as monitoring_dag
 from retraining_pipeline import (
     task_data_validation,
     task_preprocessing,
     task_hyperparameter_tuning,
     task_model_metadata,
     task_mlflow_tracking
+)
+from monitoring_pipeline import (
+    task_validate_inputs_and_quarantine,
+    task_schema_and_quality_audit,
+    task_feature_drift_monitoring,
+    task_prediction_drift_monitoring,
+    task_evaluate_forecast_performance,
+    task_compile_monitoring_governance
 )
 
 
@@ -192,3 +201,143 @@ def test_phase8_metadata_and_summary_generation(tmp_path):
         meta_data = json.load(f)
     assert meta_data["selected_model"] == "Phase 5 Prophet + PyTorch LSTM Hybrid Ensemble (Default)"
     assert "Apache Airflow" in meta_data["extra_metadata"]["orchestrator"]
+
+
+# =============================================================================
+# Phase 8: Monitoring-Only DAG & Orchestration Governance Tests
+# =============================================================================
+
+def test_monitoring_dag_properties():
+    """Verify dedicated monitoring DAG configuration, schedule, retries, and timeout."""
+    assert monitoring_dag is not None
+    assert monitoring_dag.dag_id == "demand_drift_monitoring"
+    assert monitoring_dag.catchup is False
+    assert len(monitoring_dag.tasks) == 6
+
+    # Verify weekly schedule
+    assert monitoring_dag.schedule_interval in ["@weekly", "0 0 * * 1"] or monitoring_dag.schedule == "@weekly"
+
+    # Verify default arguments
+    assert monitoring_dag.default_args.get("retries") == 2
+    assert monitoring_dag.default_args.get("execution_timeout") == pd.Timedelta(minutes=15)
+    assert monitoring_dag.default_args.get("owner") == "RetailPulse-MLOps-Team"
+
+
+def test_monitoring_dag_dependency_chain():
+    """Verify linear sequential task dependency for the scheduled monitoring workflow."""
+    expected_order = [
+        "validate_inputs_and_quarantine",
+        "audit_schema_and_quality",
+        "monitor_feature_drift",
+        "monitor_prediction_drift",
+        "evaluate_performance_and_bias",
+        "compile_governance_and_alert"
+    ]
+
+    actual_tasks = [t.task_id for t in monitoring_dag.tasks]
+    assert set(actual_tasks) == set(expected_order)
+
+    task_map = {t.task_id: t for t in monitoring_dag.tasks}
+    for i in range(len(expected_order) - 1):
+        curr_t = expected_order[i]
+        next_t = expected_order[i + 1]
+        downstreams = [t.task_id for t in task_map[curr_t].downstream_list]
+        assert next_t in downstreams, f"Expected {next_t} to be downstream of {curr_t}"
+
+
+def test_monitoring_quarantine_validation_fails_fast():
+    """Verify that requesting dates in the holdout period fails fast before reading data."""
+    with pytest.raises(ValueError, match="HOLDOUT QUARANTINE BREACH"):
+        task_validate_inputs_and_quarantine(
+            ref_start="2011-01-01",
+            ref_end="2011-08-11",
+            curr_start="2011-08-12",
+            curr_end="2011-11-20",  # Holdout breach
+            enforce_holdout_quarantine=True
+        )
+
+
+def test_monitoring_governance_collinear_drift_logic(tmp_path):
+    """Verify that feature drift alone does NOT trigger retraining when performance is healthy."""
+    out_dir = str(tmp_path / "gov_test")
+
+    # Scenario A: Feature drift detected (12/12 features), but performance is healthy (MAPE=5.92%)
+    val_res = {"status": "VALIDATED"}
+    qual_res = {"quality_pass": True, "schema_valid": True}
+    drift_res = {"dataset_drift_detected": True, "number_of_drifted_features": 12, "share_of_drifted_features": 1.0}
+    pred_res = {"prediction_drift_detected": True, "p_value": 0.01}
+    perf_res_healthy = {
+        "performance_status": "PERFORMANCE_HEALTHY",
+        "aggregate_volume_error_pct": 5.92,
+        "official_mean_weekly_portfolio_mape_pct": 14.81
+    }
+
+    gov_a = task_compile_monitoring_governance(
+        output_dir=out_dir,
+        run_id="test_run_a",
+        validation_res=val_res,
+        quality_res=qual_res,
+        drift_res=drift_res,
+        pred_drift_res=pred_res,
+        perf_res=perf_res_healthy
+    )
+
+    assert gov_a["governance_status"] == "DRIFT_ALERT_PERFORMANCE_STABLE"
+    assert gov_a["retraining_recommendation"] == "RETAIN_PRODUCTION_MODEL"
+    assert gov_a["production_model_policy"]["automated_retraining_allowed"] is False
+    assert "Input shift did not degrade forecast accuracy" in gov_a["rationale"]
+
+    # Scenario B: Feature drift detected AND performance degraded (>15% warning)
+    perf_res_degraded = {
+        "performance_status": "PERFORMANCE_DEGRADED",
+        "aggregate_volume_error_pct": 22.50,
+        "official_mean_weekly_portfolio_mape_pct": 24.10
+    }
+
+    gov_b = task_compile_monitoring_governance(
+        output_dir=out_dir,
+        run_id="test_run_b",
+        validation_res=val_res,
+        quality_res=qual_res,
+        drift_res=drift_res,
+        pred_drift_res=pred_res,
+        perf_res=perf_res_degraded
+    )
+
+    assert gov_b["governance_status"] == "RETRAINING_RECOMMENDED"
+    assert gov_b["retraining_recommendation"] == "MANUAL_RETRAINING_ADVISORY"
+    assert gov_b["production_model_policy"]["automated_deployment_allowed"] is False
+    assert "Manual review and supervised retraining recommended" in gov_b["rationale"]
+
+
+def test_monitoring_actuals_pending_handling():
+    """Verify that actual-vs-forecast evaluation returns ACTUALS_PENDING when ground truth is absent."""
+    res = task_evaluate_forecast_performance(backtest_preds_path="non_existent_file.csv")
+    assert res["performance_status"] == "ACTUALS_PENDING"
+    assert "pending realization" in res["message"]
+
+
+def test_monitoring_artifact_isolation(tmp_path):
+    """Verify that monitoring runs write outputs to isolated run-specific directories."""
+    from pathlib import Path
+    run_dir = tmp_path / "isolated_run_123"
+    phase7_dir = Path(PROJECT_ROOT) / "outputs" / "forecasting" / "phase7"
+
+    assert not run_dir.exists()
+
+    # Create dummy governance record in isolated directory
+    res = task_compile_monitoring_governance(
+        output_dir=str(run_dir),
+        run_id="isolated_run_123",
+        validation_res={"status": "VALIDATED"},
+        quality_res={"quality_pass": True},
+        drift_res={"dataset_drift_detected": False},
+        pred_drift_res={"prediction_drift_detected": False},
+        perf_res={"performance_status": "PERFORMANCE_HEALTHY"}
+    )
+
+    assert (run_dir / "monitoring_governance.json").exists()
+    # Confirm phase7 directory was not overwritten
+    assert (phase7_dir / "phase7_drift_report.html").exists()
+    assert (phase7_dir / "monitoring_metadata.json").exists()
+
